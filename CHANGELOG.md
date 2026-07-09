@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned
+
+- **Pipelines (DAG)** — Band 8 / v1.1.0: declarative YAML, `needs` joins, `fan_out`, `on_all_success` barriers. SPEC §12 + ROADMAP Band 8.
 ## [0.3.0] - 2026-07-09
 
 Band 2 milestone — Redis and ValKey storage backends work.

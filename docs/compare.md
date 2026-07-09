@@ -11,7 +11,8 @@
 | **Storage** | PG `shipped` Band 1; Redis/ValKey `shipped` Band 2 | Redis | PostgreSQL | Redis | Redis | Redis, RabbitMQ, others |
 | **Handlers** | External `cmd` (`planned` Band 3) | In-process Go | In-process Go | Multi-lang workers | In-process Ruby | In-process Python |
 | **HA** | N peers, storage dequeue (`planned` with engine); no Raft | Multi-process + Redis | Multi-process + PG `SKIP LOCKED` | Multi-process + Redis | Multi-process + Redis | Multi-worker + broker |
-| **Continuations** | First-class (`planned`) | Workflows / chains (library patterns) | Insert/hooks in app | Limited / app-level | Batches / callbacks (edition-dependent) | Canvas / chains |
+| **Continuations** | First-class (`planned` Band 4) | Workflows / chains (library patterns) | Insert/hooks in app | Limited / app-level | Batches / callbacks (edition-dependent) | Canvas / chains |
+| **DAG / pipelines** | Headless YAML + join/fan-out (`planned` Band 8) | — | — | — | — | Airflow / Dagster |
 | **Cron / delayed** | `planned` Band 4 | Yes | Yes | Yes | Yes (edition-dependent) | Beat / eta |
 | **Ops surface** | CLI + Prometheus (`planned`); no embedded UI v1 | asynqmon | River UI (ecosystem) | Web UI | Web UI (Pro) | Flower / events |
 | **License** | MIT (core) | MIT | MPL-2.0 | BSD-3-Clause (verify) | LGPL / commercial Pro | BSD-3-Clause (verify) |
@@ -20,7 +21,7 @@
 
 | Product | Pick when… |
 |---------|------------|
-| **GFire** | Need a **headless job service**; apps enqueue over **HTTP** from any language; handlers are **external binaries**; want **PostgreSQL and/or Redis/ValKey**; horizontal peers without Raft. Accept early-stage software until v1. |
+| **GFire** | Need a **headless job service**; apps enqueue over **HTTP** from any language; handlers are **external binaries**; want **PostgreSQL and/or Redis/ValKey**; horizontal peers without Raft. Post-v1: **declarative DAG pipelines** (join, fan-out, barriers) without Python operators. Accept early-stage software until v1. |
 | **Asynq** | Pure **Go** app, **Redis** already in stack, want a mature **in-process** library. |
 | **River** | Pure **Go** app, want jobs in the **same PostgreSQL** database, library embedding is fine. |
 | **Faktory** | Want a **standalone** queue server with **multi-language** workers and are OK with Faktory's protocol/ecosystem. |
@@ -31,7 +32,8 @@
 
 - Go-only + Redis + library preferred → **Asynq**
 - Go-only + PostgreSQL + library preferred → **River**
-- Long-running durable **workflows** / sagas → **Temporal** (different category)
+- Long-running durable **workflows** / sagas with compensation → **Temporal** (different category)
+- Visual DAG editor + large **operator catalog** today → **Airflow / Dagster**; GFire Pipelines (Band 8) targets headless YAML + `cmd` handlers instead
 - Need a **dashboard UI today** → not GFire v1 (GFireUI post-v1); use CLI/Prometheus when shipped, or another product
 - **Production-critical** workload now → wait for GFire v1; Band 2 is storage foundation only (no engine/API yet)
 

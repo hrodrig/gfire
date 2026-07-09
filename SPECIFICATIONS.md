@@ -20,12 +20,13 @@
 9. [Recurring Jobs (Cron)](#9-recurring-jobs-cron)
 10. [Delayed & Scheduled Jobs](#10-delayed--scheduled-jobs)
 11. [Job Continuations (Chaining)](#11-job-continuations-chaining)
-12. [Filters / Middleware Pipeline](#12-filters--middleware-pipeline)
-13. [Retry & Failure Handling](#13-retry--failure-handling)
-14. [Distributed Coordination](#14-distributed-coordination)
-15. [Observability & Ops Surface](#15-observability--ops-surface)
-16. [Package Layout](#16-package-layout)
-17. [Open Questions](#17-open-questions)
+12. [Pipelines (DAG orchestration)](#12-pipelines-dag-orchestration)
+13. [Filters / Middleware Pipeline](#13-filters--middleware-pipeline)
+14. [Retry & Failure Handling](#14-retry--failure-handling)
+15. [Distributed Coordination](#15-distributed-coordination)
+16. [Observability & Ops Surface](#16-observability--ops-surface)
+17. [Package Layout](#17-package-layout)
+18. [Open Questions](#18-open-questions)
 
 ---
 
@@ -74,6 +75,7 @@ This means:
 - Support .NET-style reflection-based job registration
 - Be embedded in another process
 - Ship a full web dashboard in v1 (that is GFireUI, separate project)
+- Replicate Airflow/Dagster operator ecosystems or visual DAG editors in the core binary (see [§12 Pipelines](#12-pipelines-dag-orchestration) for headless DAG orchestration post-v1)
 
 ---
 
@@ -1076,11 +1078,137 @@ const (
 
 If the worker crashes between enqueuing the child and recording the fact, the continuation may fire again on orphan recovery. Child jobs should be idempotent (same as any job in an at-least-once system).
 
+**Scope:** Continuations cover simple parent → child chains. Multi-step DAGs with parallel joins, fan-out, and completion barriers are [Pipelines (§12)](#12-pipelines-dag-orchestration) — post-v1.0.0.
+
 ---
 
 
 
-## 11. Filters / Middleware Pipeline
+## 12. Pipelines (DAG orchestration)
+
+> **Status:** Planned — Band 8 (post-v1.0.0). Not part of the v1.0.0 contract.
+
+GFire v1 ships a job queue with continuations. **Pipelines** add first-class DAG orchestration: parallel steps, `all_of` joins, fan-out to N branches, and run-level completion only when configured barriers are satisfied.
+
+**Wedge vs Airflow/Dagster:** headless service, HTTP/curl triggers, external `cmd` handlers in any language, declarative YAML checked into git, join/barrier logic in the engine (not DIY counters in app databases). GFire does not ship a visual editor or a Python operator catalog in the core binary.
+
+### Design case: ETL with join and fan-out
+
+```
+extract_pg_a ──┐
+               ├──► pivot ──► load_dest_1 ──┐
+extract_pg_b ──┘              load_dest_2 ──├──► pipeline run Succeeded
+                              load_dest_N ──┘
+```
+
+Heavy data stays in staging tables or object storage; pipeline args carry `pipeline_run_id`, step id, and references (~1 KB instruction cards).
+
+### Pipeline definition (YAML)
+
+Definitions live on disk (operator-managed) or are registered via API. Versioned in git alongside application code.
+
+```yaml
+name: etl-daily
+version: 1
+steps:
+  - id: extract_a
+    handler: extract_pg
+    args: { source: db_a, table: orders }
+  - id: extract_b
+    handler: extract_pg
+    args: { source: db_b, table: customers }
+  - id: pivot
+    handler: etl_pivot
+    needs: [extract_a, extract_b]
+  - id: load
+    handler: load_dest
+    needs: [pivot]
+    fan_out:
+      - { dest: warehouse_1 }
+      - { dest: warehouse_2 }
+      - { dest: warehouse_n }
+    on_all_success: true   # run completes only when every fan_out branch Succeeded
+```
+
+| Field | Meaning |
+| ----- | ------- |
+| `needs` | Step runs when **all** listed steps reached `Succeeded` |
+| `fan_out` | Engine enqueues one job per branch; args merged with branch payload |
+| `on_all_success` | Pipeline run → `Succeeded` only when every fan-out branch succeeds |
+| `handler` | Maps to configured `cmd` handler name (same as single jobs) |
+
+Failure policy (default): first terminal `Failed` step marks the pipeline run `Failed`; optional `continue_on_failure` per step is a post-Band-8 enhancement.
+
+### Pipeline run lifecycle
+
+```
+Pending → Running → Succeeded | Failed | Cancelled
+```
+
+Each **step** within a run tracks: `Pending` | `Running` | `Succeeded` | `Failed` | `Skipped`.
+
+```mermaid
+stateDiagram-v2
+  [*] --> Pending
+  Pending --> Running: start run
+  Running --> Succeeded: all steps + barriers OK
+  Running --> Failed: step failed (default policy)
+  Running --> Cancelled: cancel API
+  Succeeded --> [*]
+  Failed --> [*]
+  Cancelled --> [*]
+```
+
+### Engine integration
+
+1. `POST /v1/pipelines/{name}/runs` creates a `PipelineRun` and enqueues all steps with no `needs` (roots).
+2. When a step's backing **job** reaches a terminal state, the pipeline engine:
+   - Records step outcome on the run.
+   - Evaluates which steps have `needs` ⊆ `Succeeded` → enqueues their jobs.
+   - For `fan_out`, enqueues N jobs and tracks branch completion.
+   - When barrier conditions pass → marks run `Succeeded`.
+3. Step jobs carry metadata linking `pipeline_run_id` and `step_id` (env or args) for observability and idempotency.
+
+Continuations (§11) remain for ad-hoc chains; pipelines use the dedicated engine path to avoid double-firing.
+
+### REST API (planned)
+
+```
+POST   /v1/pipelines/{name}/runs     → 201 {run_id, status}
+GET    /v1/pipeline-runs/{id}        → run + per-step status
+GET    /v1/pipeline-runs             → list (filter by status, pipeline name)
+POST   /v1/pipeline-runs/{id}/cancel → cancel in-flight steps
+```
+
+CLI mirrors: `gfire pipeline run etl-daily`, `gfire pipeline run get <id>`.
+
+### Storage additions (all backends)
+
+| Entity | Purpose |
+| ------ | ------- |
+| `pipeline_definitions` | Name, version, parsed DAG (or hash + path) |
+| `pipeline_runs` | Run id, pipeline name, status, timestamps |
+| `pipeline_step_runs` | Step id, linked job id(s), status, fan_out index |
+
+PostgreSQL: normalized tables under `gfire` schema. Redis/ValKey: keyed structures with the same semantics.
+
+### Delivery guarantees
+
+Same as jobs: **at-least-once**. Handlers must be idempotent. Join/barrier state is updated atomically in storage; duplicate step completion events must not double-enqueue downstream steps (conditional updates).
+
+### Relationship to other tools
+
+| Tool | GFire Pipelines |
+| ---- | --------------- |
+| **Airflow / Dagster** | Rich UI, Python operators, lineage — GFire targets headless + language-agnostic handlers |
+| **Temporal** | Durable long-running workflows / sagas — different category; GFire stays instruction-card + subprocess |
+| **Continuations (§11)** | Single parent → N children on terminal state; no join or run-level barrier |
+
+---
+
+
+
+## 13. Filters / Middleware Pipeline
 
 Go closure chain, analogous to `net/http` or `gin` middleware.
 
@@ -1142,7 +1270,7 @@ func AuthMiddleware(validTenants []string) gfire.MiddlewareFunc {
 
 
 
-## 12. Retry & Failure Handling
+## 14. Retry & Failure Handling
 
 
 
@@ -1188,7 +1316,7 @@ Jobs can specify `RetryMax` at enqueue time. 0 = no retries, -1 = infinite, N = 
 
 
 
-## 13. Distributed Coordination
+## 15. Distributed Coordination
 
 
 
@@ -1239,7 +1367,7 @@ Note: Queue dequeue does **not** use a distributed lock — queue atomicity (SKI
 
 
 
-## 14. Observability & Ops Surface
+## 16. Observability & Ops Surface
 
 
 
@@ -1289,7 +1417,7 @@ Per-job traces and OTel metrics are a post-v1 enhancement. v1 stays on Prometheu
 
 
 
-## 15. Package Layout
+## 17. Package Layout
 
 Standalone service — **not** a Go import library. All application code lives under `internal/` (compiler-enforced; external modules cannot import it).
 
@@ -1312,7 +1440,8 @@ gfire/
 │   │   ├── postgres/              # PostgreSQL backend + migrations/
 │   │   └── redis/                 # Redis/ValKey backend (Band 2)
 │   │
-│   ├── engine/                    # Worker pool, scheduler, coordinator (Band 3–4)
+│   ├── engine/                    # Worker pool, scheduler, coordinator (Band 3–4); pipeline runner (Band 8)
+│   ├── pipeline/                  # YAML DAG definitions, run state machine (Band 8)
 │   ├── api/                       # HTTP handlers (Band 5)
 │   ├── config/                    # YAML + defaults (Band 6)
 │   ├── handler/                   # Subprocess handler registry
@@ -1368,7 +1497,7 @@ Post-v1 optional: `go.opentelemetry.io/otel` for traces.
 
 
 
-## 16. Open Questions
+## 18. Open Questions
 
 
 
@@ -1385,6 +1514,7 @@ Post-v1 optional: `go.opentelemetry.io/otel` for traces.
 9. **UI** — **DECIDED: headless v1.** No embedded dashboard. GFireUI (React, separate repo) post-v1 against REST API.
 10. **Authentication** — **DECIDED: optional Bearer token** in config (`auth.enabled` / `auth.token`). Off by default for local/dev.
 11. **gRPC** — **DECIDED: REST only for v1.** Revisit if a concrete use case demands it.
+12. **Pipelines / DAG** — **DECIDED: first-class Pipelines post-v1.0.0 (Band 8).** v1 ships job queue + continuations only. Pipelines add `needs`, `fan_out`, and `on_all_success` barriers in the engine. Headless YAML + HTTP; no visual DAG editor in core. Design case #1: multi-source ETL → pivot → N destinations.
 
 
 

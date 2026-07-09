@@ -428,6 +428,32 @@ server:
 
 
 
+## Band 8 — Pipelines (DAG orchestration) (post-v1)
+
+> First-class DAG runs: parallel steps, `all_of` joins, fan-out, completion barriers. Headless YAML + HTTP — the wedge vs Airflow/Dagster is language-agnostic `cmd` handlers, not operator catalogs or embedded UI.
+
+
+| Deliverable | Est. effort |
+| ----------- | ----------- |
+| `internal/pipeline/` — definition parser (YAML), DAG validation | 2 days |
+| Storage: `pipeline_runs`, `pipeline_step_runs` (PG + Redis/ValKey) | 3 days |
+| `engine/pipeline.go` — step readiness, fan-out, barrier on `on_all_success` | 3 days |
+| `api/handlers_pipelines.go` — run, get, list, cancel | 2 days |
+| CLI: `gfire pipeline run`, `gfire pipeline run get` | 1 day |
+| E2E test: etl-daily fixture (2 extracts → pivot → 3 loads → run Succeeded) | 2 days |
+| `docs/pipelines.md` — YAML reference + ETL example | 1 day |
+
+
+**Design case #1:** multi-source extract → pivot table → fan-out to N destinations; run `Succeeded` only when all branches complete.
+
+**Depends on:** v1.0.0 (engine, API, continuations, storage backends).
+
+**🔑 v1.1.0** — "Headless DAG orchestration with join and fan-out barriers."
+
+---
+
+
+
 ## Summary
 
 ```
@@ -439,7 +465,10 @@ Week 5-6│ Band 4 ─ Scheduler + recurring + cont.    ⬜ v0.5.0
 Week 6-7│ Band 5 ─ REST API                         ⬜ v0.6.0
 Week 7  │ Band 6 ─ CLI + Prometheus metrics         ⬜ v0.7.0
 Week 8  │ Band 7 ─ Polish, Docker, release          ⬜ v1.0.0
+Post    │ Band 8 ─ Pipelines (DAG)                  ⬜ v1.1.0
 ```
 
-**Total:** ~8 weeks for one developer working consistently.
-**Deliverable:** Single binary (`gfire`), REST API, CLI, Prometheus metrics, three storage backends, n+1 scaling without consensus. No embedded UI (GFireUI post-v1).
+**Total:** ~8 weeks for one developer working consistently (v1.0.0).
+**Post-v1:** Band 8 adds headless DAG orchestration (~2 weeks).
+**Deliverable (v1):** Single binary (`gfire`), REST API, CLI, Prometheus metrics, three storage backends, n+1 scaling without consensus. No embedded UI (GFireUI separate project).
+**Deliverable (v1.1):** Declarative pipelines with join, fan-out, and run-level completion barriers.
