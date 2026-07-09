@@ -40,7 +40,7 @@ Repository content (code, comments, docs, UI strings) should be **English**.
 
 ## Early development note
 
-GFire is **v0.2.0** (Band 1 — PostgreSQL). APIs and layout will still change. Prefer small PRs and discuss large design changes in an issue first.
+GFire is **v0.3.0** (Band 2 — Redis/ValKey). APIs and layout will still change. Prefer small PRs and discuss large design changes in an issue first.
 
 ## Questions
 

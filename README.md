@@ -4,7 +4,7 @@
 
 **🔥** _Language-agnostic job orchestration over HTTP — PostgreSQL, Redis, or ValKey_
 
-[![Version](https://img.shields.io/badge/version-0.2.0-blue)](./VERSION)
+[![Version](https://img.shields.io/badge/version-0.3.0-blue)](./VERSION)
 [![Go](https://img.shields.io/badge/Go-1.26.5-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Status](https://img.shields.io/badge/status-early%20development-orange)](#early-development--not-for-production)
@@ -18,7 +18,7 @@
 
 GFire is a **headless background job service**: a standalone Go binary that runs a worker pool and (soon) a REST API. Applications enqueue work over HTTP — they never import GFire as a library. Workers spawn external handler processes (`cmd`) against shared storage (**PostgreSQL**, **Redis**, or **ValKey**).
 
-> **Early development (v0.2.0 — Band 1).** Storage foundation works (in-memory + PostgreSQL). There is **no** production-ready API, engine, or CLI beyond `gfire version`. **Do not use in production.**
+> **Early development (v0.3.0 — Band 2).** Storage foundation works (in-memory + PostgreSQL + Redis/ValKey). There is **no** production-ready API, engine, or CLI beyond `gfire version`. **Do not use in production.**
 
 ## Table of contents
 
@@ -29,6 +29,8 @@ GFire is a **headless background job service**: a standalone Go binary that runs
 - [Requirements](#requirements)
 - [Development](#development)
 - [PostgreSQL (Band 1)](#postgresql-band-1)
+- [Redis / ValKey (Band 2)](#redis--valkey-band-2)
+- [Compare](#compare)
 - [Project docs](#project-docs)
 - [Get involved](#get-involved)
 - [License](#license)
@@ -37,7 +39,7 @@ GFire is a **headless background job service**: a standalone Go binary that runs
 
 ## Early development — not for production
 
-**GFire is in a very early pre-release stage (v0.2.0 — Band 1 PostgreSQL).**
+**GFire is in a very early pre-release stage (v0.3.0 — Band 2 Redis/ValKey).**
 
 - APIs, storage schema, and behavior **will change** without notice.
 - There is **no** stable release, **no** REST API, **no** worker engine, and **no** CLI beyond a stub binary (`gfire version`).
@@ -47,7 +49,7 @@ Check [ROADMAP.md](ROADMAP.md) for what is planned and what is done.
 
 [↑ Back to top](#readme-top)
 
-## Current status (Band 1 / v0.2.0)
+## Current status (Band 2 / v0.3.0)
 
 | Component | Status |
 |-----------|--------|
@@ -55,7 +57,7 @@ Check [ROADMAP.md](ROADMAP.md) for what is planned and what is done.
 | `Storage` interface | ✅ |
 | In-memory backend + tests | ✅ |
 | PostgreSQL backend | ✅ `SKIP LOCKED` + migrations + integration tests |
-| Redis / ValKey backend | ⬜ not started |
+| Redis / ValKey backend | ✅ `BRPOP` + Lua scripts + integration tests (shared impl) |
 | Engine (workers) | ⬜ not started |
 | REST API / CLI | ⬜ stub (`gfire version` only) |
 
@@ -131,12 +133,41 @@ Default DSN: `postgres://gfire:gfire@localhost:5432/gfire?sslmode=disable` (see 
 
 [↑ Back to top](#readme-top)
 
+## Redis / ValKey (Band 2)
+
+```sh
+make db-up
+go test ./internal/storage/redis/ -count=1
+```
+
+Default Redis: `localhost:6379`. ValKey (same API): `GFIRE_REDIS_ADDR=localhost:6380 go test ./internal/storage/redis/ -count=1`.
+
+[↑ Back to top](#readme-top)
+
+## Compare
+
+> Snapshot **v0.3.0 / Band 2**. GFire cells marked WIP/planned are not production-ready.
+
+| Axis | GFire | Asynq | River |
+|------|-------|-------|-------|
+| Model | Standalone service | Go library | Go library |
+| Enqueue | HTTP / curl (`WIP`) | Go API | Go API |
+| Storage | PG + Redis/ValKey `shipped` | Redis | PostgreSQL |
+| Handlers | External `cmd` (`planned`) | In-process | In-process |
+| HA | N peers, no Raft (`planned`) | Redis | PG `SKIP LOCKED` |
+
+Full matrix (Sidekiq, Celery, Faktory, narratives): **[docs/compare.md](docs/compare.md)** · [gfire.net/compare](https://gfire.net/compare)
+
+[↑ Back to top](#readme-top)
+
 ## Project docs
 
 | Doc | Purpose |
 |-----|---------|
 | [SPECIFICATIONS.md](SPECIFICATIONS.md) | Behavior / architecture contract |
 | [ROADMAP.md](ROADMAP.md) | Weekly bands → v1.0.0 |
+| [CHANGELOG.md](CHANGELOG.md) | Shipped changes per release |
+| [docs/compare.md](docs/compare.md) | GFire vs Asynq, River, Faktory, Sidekiq, Celery |
 | [AGENTS.md](AGENTS.md) | Conventions for AI agents / contributors |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
 | [SECURITY.md](SECURITY.md) | Vulnerability reporting |

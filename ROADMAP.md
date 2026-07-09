@@ -168,23 +168,23 @@ GFire uses **shared-state coordination**, not leader election. All nodes are pee
 
 
 
-## Band 2 — Redis / ValKey (Week 3–4)
+## Band 2 — Redis / ValKey (Week 3–4) ✅
 
 > In-memory queue backend for high-throughput deployments.
 
 
-| Deliverable                                             | Est. effort |
-| ------------------------------------------------------- | ----------- |
-| `internal/storage/redis/storage.go` — full Storage impl | 4 days      |
-| Lua scripts for atomic multi-key operations             | 1 day       |
-| Integration tests (requires Redis, docker-compose)      | 1 day       |
-| `docker-compose.yml` — gfire + redis dev env            | 1 day       |
+| Deliverable                                             | Status    |
+| ------------------------------------------------------- | --------- |
+| `internal/storage/redis/storage.go` — full Storage impl | ✅         |
+| Lua scripts for atomic multi-key operations             | ✅         |
+| Integration tests (requires Redis, docker-compose)      | ✅ 5 tests |
+| `docker-compose.yml` — gfire + redis dev env            | ✅         |
 
 
 **Key decisions:**
 
-- Share implementation for Redis and ValKey (they're API-compatible as of 2026)
-- `rueidis` driver (higher perf) or `go-redis/v9` (wider adoption) — decide in implementation
+- Share implementation for Redis and ValKey (API-compatible; connect via address)
+- **`go-redis/v9`** driver (rueidis deferred — can revisit for perf)
 - BRPOP for blocking dequeue
 - Sorted sets for scheduling
 - Lua scripts for atomic dequeue + state transition
@@ -433,7 +433,7 @@ server:
 ```
 Week 1  │ Band 0 ─ Foundation                      ✅ v0.1.0
 Week 2-3│ Band 1 ─ PostgreSQL                       ✅ v0.2.0
-Week 3-4│ Band 2 ─ Redis / ValKey                   ⬜ v0.3.0
+Week 3-4│ Band 2 ─ Redis / ValKey                   ✅ v0.3.0
 Week 4-5│ Band 3 ─ Engine: workers + middleware      ⬜ v0.4.0
 Week 5-6│ Band 4 ─ Scheduler + recurring + cont.    ⬜ v0.5.0
 Week 6-7│ Band 5 ─ REST API                         ⬜ v0.6.0

@@ -5,7 +5,7 @@ GOPATH_BIN := $(shell go env GOPATH)/bin
 PREFIX ?= $(GOPATH_BIN)
 BINDIR ?= $(PREFIX)
 
-VERSION := $(shell cat VERSION 2>/dev/null | tr -d ' \n\r' || echo 0.2.0)
+VERSION := $(shell cat VERSION 2>/dev/null | tr -d ' \n\r' || echo dev)
 GIT_COMMIT := $(firstword $(shell git rev-parse --short HEAD 2>/dev/null | head -1))
 ifeq ($(strip $(GIT_COMMIT)),)
   GIT_COMMIT := unknown
@@ -65,6 +65,7 @@ help:
 	@echo "  make db-down        Stop compose stack"
 	@echo "  make migrate-up     Apply PostgreSQL migrations"
 	@echo "  make migrate-down   Roll back one migration"
+	@echo "  Redis tests: make db-up && go test ./internal/storage/redis/ -count=1"
 	@echo ""
 	@echo "Variables:"
 	@echo "  COVER_MIN=<n>       Minimum coverage %% (default: $(COVER_MIN))"

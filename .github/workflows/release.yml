@@ -1,5 +1,5 @@
 # Release: tag push v* → GoReleaser publishes binaries and container image.
-# Trigger: git tag -a v0.2.0 -m "..." && git push origin v0.2.0
+# Trigger: git tag -a v0.3.0 -m "..." && git push origin v0.3.0
 # Run `make release-check` locally before tagging (see CONTRIBUTING.md).
 
 name: Release

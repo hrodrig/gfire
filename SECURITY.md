@@ -6,7 +6,7 @@ This policy covers the GFire service binary, its configuration handling, storage
 
 GFire is a **headless job orchestrator**. Job handlers are external processes configured by operators; treat handler args, logs, and storage contents as potentially sensitive.
 
-**Status:** GFire is early pre-release (**v0.2.0**, Band 1). Do not run in production. Security expectations still apply to the code that exists.
+**Status:** GFire is early pre-release (**v0.3.0**, Band 2). Do not run in production. Security expectations still apply to the code that exists.
 
 ## Supported versions
 
