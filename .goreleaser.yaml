@@ -1,0 +1,123 @@
+# GoReleaser config for GFire (first release).
+# Requires Go 1.26.5+ (see go.mod). Binary ldflags match Makefile / Dockerfile.
+version: 2
+
+project_name: gfire
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: gfire
+    main: ./cmd/gfire
+    binary: gfire
+    flags:
+      - -trimpath
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s
+      - -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.ShortCommit}}
+      - -X main.branch={{.Branch}}
+      - -X main.buildDate={{.Date}}
+
+archives:
+  - id: gfire-dist
+    ids:
+      - gfire
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "gfire_{{ .Tag }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - src: LICENSE
+        dst: share/doc/gfire/LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+# Cosign keyless signing (GitHub Actions OIDC). Requires `id-token: write`
+# in the release workflow and sigstore/cosign-installer.
+signs:
+  - cmd: cosign
+    env:
+      - COSIGN_EXPERIMENTAL=1
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-signature=${signature}"
+      - "--output-certificate=${certificate}"
+      - "${artifact}"
+      - --yes
+    artifacts: checksum
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "^\\.github:"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+# One SPDX + one CycloneDX document per release (source tree catalog).
+sboms:
+  - id: gfire-sbom-spdx
+    artifacts: source
+    documents:
+      - "gfire_{{ .Version }}_sbom.spdx.json"
+    args: ["$artifact", "--output", "spdx-json=$document"]
+  - id: gfire-sbom-cdx
+    artifacts: source
+    documents:
+      - "gfire_{{ .Version }}_sbom.cyclonedx.json"
+    args: ["$artifact", "--output", "cyclonedx-json=$document"]
+
+# Multi-arch images via pre-built binaries (Dockerfile.release).
+# Local multi-stage builds use Dockerfile (make docker-build).
+dockers_v2:
+  - dockerfile: Dockerfile.release
+    sbom: true
+    ids:
+      - gfire
+    images:
+      - ghcr.io/hrodrig/gfire
+    tags:
+      - "v{{ .Version }}"
+      - "{{ if not .IsSnapshot }}latest{{ end }}"
+    labels:
+      org.opencontainers.image.title: "gfire"
+      org.opencontainers.image.description: "Standalone background job service"
+      org.opencontainers.image.source: "https://github.com/hrodrig/gfire"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+
+docker_signs:
+  - cmd: cosign
+    env:
+      - COSIGN_EXPERIMENTAL=1
+    args:
+      - sign
+      - "${artifact}@${digest}"
+      - --yes
