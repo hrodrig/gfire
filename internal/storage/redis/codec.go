@@ -54,6 +54,9 @@ func jobHashFields(job *domain.Job, state string, progressAt time.Time) map[stri
 	if !progressAt.IsZero() {
 		fields["progress_at"] = progressAt.UTC().Format(time.RFC3339Nano)
 	}
+	if len(job.Result) > 0 {
+		fields["result"] = string(job.Result)
+	}
 	return fields
 }
 
@@ -74,6 +77,9 @@ func jobFromHash(fields map[string]string) (*domain.Job, string, time.Time, erro
 		RetryMax:  retryMax,
 		Timeout:   durationFromMS(timeoutMSVal),
 		CreatedAt: createdAt,
+	}
+	if r := fields["result"]; r != "" {
+		j.Result = []byte(r)
 	}
 	return j, fields["state"], progressAt, nil
 }

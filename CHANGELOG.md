@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Engine (Band 3 / v0.4.0)**: `internal/engine/` — worker pool, middleware pipeline, panic recovery, per-job timeout + heartbeat, retry with backoff, cancel in-flight (B3-009), queue concurrency caps (B3-010), result capture (B3-011), Dead/DLQ state (B3-012).
+- **`internal/handler/`** — subprocess runner (SIGTERM on cancel) + `handler.Func` for tests.
+- **`internal/middleware/`** — `JobContext`, `Pipeline`, `PanicRecovery`.
+- Storage: `ScheduleRetry`, `SetJobResult`; PG migration `002_job_result`; `Job.Result` field.
+
 ### Planned
 
 - **Pipelines (DAG)** — Band 8 / v1.1.0: declarative YAML, `needs` joins, `fan_out`, `on_all_success` barriers. SPEC §12 + ROADMAP Band 8.

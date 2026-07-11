@@ -13,7 +13,7 @@ import (
 
 func (s *Storage) GetJob(ctx context.Context, jobID string) (*domain.JobWithStates, error) {
 	j, err := s.scanJob(ctx, `
-		SELECT id, name, args, queue, retry_max, timeout_ms, created_at
+		SELECT id, name, args, queue, retry_max, timeout_ms, created_at, result
 		FROM gfire.jobs WHERE id = $1`, jobID)
 	if err != nil {
 		return nil, err
@@ -35,13 +35,13 @@ func (s *Storage) GetJobsByState(ctx context.Context, state string, offset, limi
 	var err error
 	if state == "" {
 		rows, err = s.pool.Query(ctx, `
-			SELECT id, name, args, queue, retry_max, timeout_ms, created_at
+			SELECT id, name, args, queue, retry_max, timeout_ms, created_at, result
 			FROM gfire.jobs
 			ORDER BY created_at DESC
 			OFFSET $1 LIMIT $2`, offset, limit)
 	} else {
 		rows, err = s.pool.Query(ctx, `
-			SELECT id, name, args, queue, retry_max, timeout_ms, created_at
+			SELECT id, name, args, queue, retry_max, timeout_ms, created_at, result
 			FROM gfire.jobs
 			WHERE state = $1
 			ORDER BY created_at DESC
@@ -113,13 +113,17 @@ type scannable interface {
 func scanJobFromRow(row scannable) (*domain.Job, error) {
 	var j domain.Job
 	var args []byte
+	var result []byte
 	var timeoutMSVal int64
-	err := row.Scan(&j.ID, &j.Name, &args, &j.Queue, &j.RetryMax, &timeoutMSVal, &j.CreatedAt)
+	err := row.Scan(&j.ID, &j.Name, &args, &j.Queue, &j.RetryMax, &timeoutMSVal, &j.CreatedAt, &result)
 	if err != nil {
 		return nil, err
 	}
 	j.Args = args
 	j.Timeout = durationFromMS(timeoutMSVal)
+	if len(result) > 0 && string(result) != "null" {
+		j.Result = append([]byte(nil), result...)
+	}
 	return &j, nil
 }
 

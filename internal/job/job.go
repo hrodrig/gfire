@@ -12,6 +12,7 @@ type Job struct {
 	RetryMax  int           `json:"retry_max,omitempty"`
 	Timeout   time.Duration `json:"timeout,omitempty"` // max execution time (0 = config default)
 	CreatedAt time.Time     `json:"created_at"`
+	Result    []byte        `json:"result,omitempty"` // handler stdout JSON, cap 64KB (B3-011)
 }
 
 // JobState represents an immutable node in the job's lifecycle.
@@ -46,18 +47,18 @@ const (
 	StateScheduled  = "Scheduled"
 	StateDeleted    = "Deleted"
 	StateAwaiting   = "Awaiting"
-	StateDead       = "Dead"       // poison / DLQ — Band 3 (B3-012)
-	StateCancelled  = "Cancelled"  // operator cancel — Band 3 (B3-009)
+	StateDead       = "Dead"      // poison / DLQ — Band 3 (B3-012)
+	StateCancelled  = "Cancelled" // operator cancel — Band 3 (B3-009)
 )
 
 // TerminalStates returns true if the state is terminal
 // (no more transitions expected except manual intervention or cleanup).
 var TerminalStates = map[string]bool{
-	StateSucceeded:  true,
-	StateFailed:     true,
-	StateDeleted:    true,
-	StateDead:       true,
-	StateCancelled:  true,
+	StateSucceeded: true,
+	StateFailed:    true,
+	StateDeleted:   true,
+	StateDead:      true,
+	StateCancelled: true,
 }
 
 // ServerInfo represents a GFire node registered in the cluster.

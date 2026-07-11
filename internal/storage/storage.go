@@ -152,4 +152,10 @@ type Storage interface {
 
 	// Close cleanly shuts down the storage backend, releasing connections.
 	Close() error
+
+	// ScheduleRetry moves a Failed job to Scheduled and sets enqueue_at (retry backoff).
+	ScheduleRetry(ctx context.Context, jobID string, enqueueAt time.Time) error
+
+	// SetJobResult stores handler stdout (JSON) on the job record before Succeeded.
+	SetJobResult(ctx context.Context, jobID string, result []byte) error
 }

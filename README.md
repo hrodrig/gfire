@@ -4,7 +4,7 @@
 
 **🔥** _Language-agnostic job orchestration over HTTP — PostgreSQL, Redis, or ValKey_
 
-[![Version](https://img.shields.io/badge/version-0.3.0-blue)](./VERSION)
+[![Version](https://img.shields.io/badge/version-0.4.0-blue)](./VERSION)
 [![Go](https://img.shields.io/badge/Go-1.26.5-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Status](https://img.shields.io/badge/status-early%20development-orange)](#early-development--not-for-production)
@@ -18,7 +18,7 @@
 
 GFire is a **headless background job service**: a standalone Go binary that runs a worker pool and (soon) a REST API. Applications enqueue work over HTTP — they never import GFire as a library. Workers spawn external handler processes (`cmd`) against shared storage (**PostgreSQL**, **Redis**, or **ValKey**).
 
-> **Early development (v0.3.0 — Band 2).** Storage foundation works (in-memory + PostgreSQL + Redis/ValKey). There is **no** production-ready API, engine, or CLI beyond `gfire version`. **Do not use in production.**
+> **Early development (v0.4.0 — Band 3).** Storage + **worker engine** work (in-memory tests). There is **no** production-ready REST API or CLI beyond `gfire version`. **Do not use in production.**
 
 ## Table of contents
 
@@ -39,17 +39,17 @@ GFire is a **headless background job service**: a standalone Go binary that runs
 
 ## Early development — not for production
 
-**GFire is in a very early pre-release stage (v0.3.0 — Band 2 Redis/ValKey).**
+**GFire is in a very early pre-release stage (v0.4.0 — Band 3 engine).**
 
 - APIs, storage schema, and behavior **will change** without notice.
-- There is **no** stable release, **no** REST API, **no** worker engine, and **no** CLI beyond a stub binary (`gfire version`).
+- There is **no** stable release, **no** REST API, and **no** CLI beyond a stub binary (`gfire version`). The **engine** runs jobs against storage in tests; wiring into `gfire server` is Band 6.
 - **Do not use in production.** No support, no SLA, no security audit.
 
 Check [ROADMAP.md](ROADMAP.md) for what is planned and what is done.
 
 [↑ Back to top](#readme-top)
 
-## Current status (Band 2 / v0.3.0)
+## Current status (Band 3 / v0.4.0)
 
 | Component | Status |
 |-----------|--------|
@@ -58,7 +58,7 @@ Check [ROADMAP.md](ROADMAP.md) for what is planned and what is done.
 | In-memory backend + tests | ✅ |
 | PostgreSQL backend | ✅ `SKIP LOCKED` + migrations + integration tests |
 | Redis / ValKey backend | ✅ `BRPOP` + Lua scripts + integration tests (shared impl) |
-| Engine (workers) | ⬜ not started |
+| Engine (workers) | ✅ worker pool, retry, cancel, DLQ, result capture |
 | REST API / CLI | ⬜ stub (`gfire version` only) |
 
 [↑ Back to top](#readme-top)

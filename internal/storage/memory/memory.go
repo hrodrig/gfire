@@ -206,7 +206,46 @@ func (s *Storage) ApplyState(ctx context.Context, jobID string, expectedCurrent 
 		s.counters["succeeded"]++
 	case domain.StateFailed:
 		s.counters["failed"]++
+	case domain.StateDead:
+		s.counters["dead"]++
 	}
+	return nil
+}
+
+func (s *Storage) ScheduleRetry(ctx context.Context, jobID string, enqueueAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	states, ok := s.jobStates[jobID]
+	if !ok {
+		return serrors.ErrNotFound
+	}
+	current := states[len(states)-1].Name
+	if current != domain.StateFailed {
+		return serrors.ErrStateConflict
+	}
+
+	s.jobStates[jobID] = append(states, &domain.JobState{
+		Name:      domain.StateScheduled,
+		Data:      map[string]string{"enqueue_at": enqueueAt.Format(time.RFC3339)},
+		CreatedAt: time.Now(),
+	})
+	s.scheduled[jobID] = enqueueAt
+	s.counters["scheduled"]++
+	return nil
+}
+
+func (s *Storage) SetJobResult(ctx context.Context, jobID string, result []byte) error {
+	if len(result) > 65536 {
+		result = result[:65536]
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	job, ok := s.jobs[jobID]
+	if !ok {
+		return serrors.ErrNotFound
+	}
+	job.Result = append([]byte(nil), result...)
 	return nil
 }
 

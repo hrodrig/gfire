@@ -198,8 +198,18 @@ func (s *Storage) ApplyState(ctx context.Context, jobID string, expectedCurrent 
 	}
 	defer tx.Rollback(ctx)
 
+	if err := s.applyStateTx(ctx, tx, jobID, expectedCurrent, newState); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("applystate commit: %w", err)
+	}
+	return nil
+}
+
+func (s *Storage) applyStateTx(ctx context.Context, tx pgx.Tx, jobID, expectedCurrent string, newState *domain.JobState) error {
 	var current string
-	err = tx.QueryRow(ctx, `SELECT state FROM gfire.jobs WHERE id = $1 FOR UPDATE`, jobID).Scan(&current)
+	err := tx.QueryRow(ctx, `SELECT state FROM gfire.jobs WHERE id = $1 FOR UPDATE`, jobID).Scan(&current)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return serrors.ErrNotFound
 	}
@@ -216,12 +226,9 @@ func (s *Storage) ApplyState(ctx context.Context, jobID string, expectedCurrent 
 		newState.CreatedAt = now
 	}
 
-	data, err := json.Marshal(newState.Data)
+	data, err := marshalStateData(newState.Data)
 	if err != nil {
-		return fmt.Errorf("applystate marshal data: %w", err)
-	}
-	if newState.Data == nil {
-		data = []byte("{}")
+		return err
 	}
 
 	clearProgress := newState.Name != domain.StateProcessing
@@ -246,21 +253,33 @@ func (s *Storage) ApplyState(ctx context.Context, jobID string, expectedCurrent 
 		return fmt.Errorf("applystate insert state: %w", err)
 	}
 
-	switch newState.Name {
-	case domain.StateSucceeded:
-		if err := bumpCounter(ctx, tx, "succeeded", 1); err != nil {
-			return err
-		}
-	case domain.StateFailed:
-		if err := bumpCounter(ctx, tx, "failed", 1); err != nil {
-			return err
-		}
-	}
+	return bumpCounterForState(ctx, tx, newState.Name)
+}
 
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("applystate commit: %w", err)
+func marshalStateData(data map[string]string) ([]byte, error) {
+	if data == nil {
+		return []byte("{}"), nil
 	}
-	return nil
+	b, err := json.Marshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("applystate marshal data: %w", err)
+	}
+	return b, nil
+}
+
+func bumpCounterForState(ctx context.Context, tx pgx.Tx, stateName string) error {
+	var key string
+	switch stateName {
+	case domain.StateSucceeded:
+		key = "succeeded"
+	case domain.StateFailed:
+		key = "failed"
+	case domain.StateDead:
+		key = "dead"
+	default:
+		return nil
+	}
+	return bumpCounter(ctx, tx, key, 1)
 }
 
 func (s *Storage) HeartbeatJob(ctx context.Context, jobID string) error {

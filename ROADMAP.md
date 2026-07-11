@@ -196,27 +196,28 @@ GFire uses **shared-state coordination**, not leader election. All nodes are pee
 
 
 
-## Band 3 — Engine: Worker Pool + Middleware (Week 4–5)
+## Band 3 — Engine: Worker Pool + Middleware (Week 4–5) ✅
 
 > The core job processing loop. Workers, dequeue, retry, panic recovery.
 > **Per-job timeout and job-level heartbeat** (for 4-hour SAP extractions).
 
 
-| Deliverable                                                                      | Est. effort |
-| -------------------------------------------------------------------------------- | ----------- |
-| `engine/engine.go` — Engine struct, Start/Stop lifecycle                         | 2 days      |
-| `engine/worker.go` — Worker goroutine: fetch → middleware → execute → finalize   | 2 days      |
-| Per-job timeout: kill subprocess if job exceeds `job.Timeout`                    | 1 day       |
-| Per-job heartbeat ticker: worker updates `HeartbeatJob` every 60s while job runs | 1 day       |
-| Graceful shutdown: SIGINT/SIGTERM → drain → exit                                 | 1 day       |
-| `middleware.go` — MiddlewareFunc, Pipeline (closure chain)                       | 1 day       |
-| `recovery.go` — Panic recovery middleware                                        | 1 day       |
-| `retry.go` — Automatic retry with exponential backoff + jitter                   | 1 day       |
-| Integration test: in-memory engine, 100 jobs, verify all complete                | 1 day       |
-| **B3-009** In-flight cancel — cancel context → SIGTERM handler subprocess → `Cancelled` | 1 day  |
-| **B3-010** Per-queue concurrency cap — `server.queue_limits`; skip dequeue at cap | 1 day |
-| **B3-011** Job result capture — handler stdout JSON → storage `result` (cap 64KB) | 1 day       |
-| **B3-012** Dead (DLQ) state — after `retry_max` exhausted → `Dead` (not retryable) | 0.5 day  |
+| Deliverable                                                                      | Status |
+| -------------------------------------------------------------------------------- | ------ |
+| `internal/engine/engine.go` — Engine struct, Start/Stop lifecycle                | ✅      |
+| `internal/engine/worker.go` — Worker goroutine: fetch → middleware → execute     | ✅      |
+| Per-job timeout: kill subprocess if job exceeds `job.Timeout`                    | ✅      |
+| Per-job heartbeat ticker: worker updates `HeartbeatJob` every 60s while job runs | ✅      |
+| Graceful shutdown: context cancel → drain workers                                | ✅      |
+| `internal/middleware/` — MiddlewareFunc, Pipeline, PanicRecovery                 | ✅      |
+| `internal/handler/` — subprocess runner + Func for tests                         | ✅      |
+| Retry with exponential backoff + jitter → `ScheduleRetry`                        | ✅      |
+| Integration test: in-memory engine, 100 jobs                                     | ✅      |
+| **B3-009** In-flight cancel — cancel context → `Cancelled`                       | ✅      |
+| **B3-010** Per-queue concurrency cap — `server.queue_limits`                     | ✅      |
+| **B3-011** Job result capture — stdout → `SetJobResult` (cap 64KB)               | ✅      |
+| **B3-012** Dead (DLQ) state — after `retry_max` exhausted                        | ✅      |
+| SIGINT/SIGTERM signal wiring in `cmd/gfire server`                               | ⬜ Band 6 |
 
 
 **Handler model note:** one subprocess per job adds ~100–500ms startup. Fine for minute/hour jobs (SAP ETL); poor for sub-50ms micro-tasks. Long-lived handler pool is post-v1 (see deferred list below).
@@ -262,7 +263,7 @@ Engine.Stop():
   return
 ```
 
-**🔑 v0.4.0** — "Engine processes jobs with retry and recovery."
+**🔑 v0.4.0** — "Engine processes jobs with retry, cancel, and DLQ." ✅
 
 ---
 
@@ -523,7 +524,7 @@ handlers:
 Week 1  │ Band 0 ─ Foundation                      ✅ v0.1.0
 Week 2-3│ Band 1 ─ PostgreSQL                       ✅ v0.2.0
 Week 3-4│ Band 2 ─ Redis / ValKey                   ✅ v0.3.0
-Week 4-5│ Band 3 ─ Engine: workers + middleware      ⬜ v0.4.0
+Week 4-5│ Band 3 ─ Engine: workers + middleware      ✅ v0.4.0
 Week 5-6│ Band 4 ─ Scheduler + recurring + cont.    ⬜ v0.5.0
 Week 6-7│ Band 5 ─ REST API                         ⬜ v0.6.0
 Week 7  │ Band 6 ─ CLI + Prometheus metrics         ⬜ v0.7.0

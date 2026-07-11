@@ -1,0 +1,1 @@
+ALTER TABLE gfire.jobs DROP COLUMN IF EXISTS result;
