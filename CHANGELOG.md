@@ -10,7 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Planned
 
 - **Pipelines (DAG)** — Band 8 / v1.1.0
-- Recurring cron API, bulk enqueue, OpenAPI, Prometheus `/metrics`
+- Recurring cron API (v0.5.0 band), bulk enqueue, OpenAPI, job delete (B5-014), Prometheus `/metrics`
+
+### Fixed
+
+- SPEC/ROADMAP sync post-Hermes audit: Storage 31 methods, Result B3-011 implemented, cancel/auth marked shipped, delete tracked as B5-014
 
 ## [0.6.0] - 2026-07-11
 
@@ -27,6 +31,7 @@ First **usable preview**: run the daemon, enqueue with curl, inspect with CLI.
 
 - Default in-memory backend; PostgreSQL/Redis via config. Run `make migrate-up` for PG (migration `002_job_result`).
 - Not tagged as production-ready; v1.0.0 remains Band 7 polish.
+- **v0.5.0 skipped** — recurring cron (Band 4 remainder) deferred; shipped v0.4.0 (engine) then v0.6.0 (usable preview) directly.
 
 ## [0.4.0] - 2026-07-11
 

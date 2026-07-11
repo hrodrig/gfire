@@ -125,7 +125,7 @@ GFire uses **shared-state coordination**, not leader election. All nodes are pee
 | Deliverable                                                                 | Status |
 | --------------------------------------------------------------------------- | ------ |
 | `internal/job/` — Job, JobState, ServerInfo, Lock, JobTicket, continuations | ✅      |
-| `internal/storage/storage.go` — Full interface (29 methods)                 | ✅      |
+| `internal/storage/storage.go` — Full interface (31 methods; 29 at v0.1.0)   | ✅      |
 | `internal/storage/errors/` — Sentinel errors                                | ✅      |
 | `internal/storage/memory/` — Thread-safe in-memory backend                  | ✅      |
 | `internal/storage/memory/memory_test.go` — 13 tests, all passing            | ✅      |
@@ -217,6 +217,7 @@ GFire uses **shared-state coordination**, not leader election. All nodes are pee
 | **B3-010** Per-queue concurrency cap — `server.queue_limits`                     | ✅      |
 | **B3-011** Job result capture — stdout → `SetJobResult` (cap 64KB)               | ✅      |
 | **B3-012** Dead (DLQ) state — after `retry_max` exhausted                        | ✅      |
+| `ScheduleRetry` + `SetJobResult` on Storage interface (31 methods total)         | ✅      |
 | SIGINT/SIGTERM signal wiring in `cmd/gfire server`                               | ⬜ Band 6 |
 
 
@@ -292,14 +293,17 @@ Engine.Stop():
 
 ## Band 5 — REST API (Week 6–7) — core ✅
 
-> HTTP API so applications can talk to GFire. **v0.6.0 = curl-usable core; B5-009–013 deferred.**
+> HTTP API so applications can talk to GFire. **v0.6.0 = curl-usable core; B5-009, B5-010, B5-013 deferred.**
 
 
 | Deliverable                                                | Status |
 | ---------------------------------------------------------- | ------ |
 | `internal/api/` — routes, JSON errors, max body, Bearer auth | ✅   |
 | Jobs: enqueue, schedule, get, list, requeue, cancel, continue | ✅  |
+| **B5-011** cancel in-flight                                | ✅      |
+| **B5-012** Bearer auth (`auth.enabled`)                    | ✅      |
 | Queues + servers + healthz/readyz                          | ✅      |
+| **B5-014** job delete (`POST /v1/jobs/{id}/delete`)        | ⬜      |
 | Recurring CRUD handlers                                    | ⬜      |
 | **B5-009** bulk enqueue                                    | ⬜      |
 | **B5-010** Idempotency-Key                                 | ⬜      |
@@ -337,6 +341,7 @@ POST   /v1/jobs/{id}/requeue, /cancel, /continue
 GET    /v1/queues, /v1/queues/{name}, GET /v1/servers
 GET    /healthz, /readyz
 POST   /v1/jobs/enqueue/batch, GET /openapi.json, /v1/recurring/*  → planned
+POST   /v1/jobs/{id}/delete                                         → planned (B5-014)
 GET    /metrics                                                   → planned
 ```
 

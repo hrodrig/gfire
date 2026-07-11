@@ -202,7 +202,7 @@ sequenceDiagram
 
 Your application never imports GFire. It sends HTTP requests to the GFire server.
 
-> **Implementation status:** Core routes ship in Band 5 (ROADMAP). Items marked **(planned)** are specified here for contract tests; see ROADMAP IDs `B5-009`–`B5-013`.
+> **Implementation status:** Core routes ship in v0.6.0. Items marked **(planned)** are specified for contract tests; see ROADMAP IDs `B5-009`, `B5-010`, `B5-013`, `B5-014`.
 
 ### Base URL
 
@@ -225,8 +225,8 @@ POST   /v1/jobs/schedule             → { job_id, enqueue_at, status }
 GET    /v1/jobs/{id}                  → job detail + state history + result?
 GET    /v1/jobs                      → paginated, filterable (?state=&queue=&limit=&offset=)
 POST   /v1/jobs/{id}/requeue         → { status }
-POST   /v1/jobs/{id}/cancel          → { status }                            # planned B5-011
-POST   /v1/jobs/{id}/delete          → { status }
+POST   /v1/jobs/{id}/cancel          → { status }                            # v0.6.0 (B5-011)
+POST   /v1/jobs/{id}/delete          → { status }                            # planned
 ```
 
 **Headers (enqueue / batch):**
@@ -234,7 +234,7 @@ POST   /v1/jobs/{id}/delete          → { status }
 | Header            | Required | Purpose |
 | ----------------- | -------- | ------- |
 | `Idempotency-Key` | No       | Client retry dedupe — same key returns same `job_id` **(planned B5-010)** |
-| `Authorization`   | When `auth.enabled` | `Bearer <token>` **(planned B5-012)** |
+| `Authorization`   | When `auth.enabled` | `Bearer <token>` **(v0.6.0, B5-012)** |
 
 **Enqueue request:**
 
@@ -413,7 +413,7 @@ Authorization: Bearer <auth.token>
 
 Unauthenticated requests to protected routes return `401`. When disabled, all `/v1/*` routes are open — do not expose `:8080` on the public internet without TLS + auth.
 
-**Planned:** Band 5 (`B5-012`).
+**Implemented:** v0.6.0 (`B5-012`).
 
 ---
 
@@ -434,7 +434,7 @@ type Job struct {
     CreatedAt time.Time
     RetryMax  int           // per-job override of default retry count
     Timeout   time.Duration // max handler runtime; 0 = server.default_timeout
-    Result    []byte        // handler stdout JSON (optional, cap 64KB) — planned B3-011
+    Result    []byte        // handler stdout JSON (optional, cap 64KB) — B3-011 ✅
 }
 ```
 
@@ -538,7 +538,7 @@ type JobWithStates struct {
 
 ## 5. Storage Interface
 
-The `Storage` interface is **the** abstraction. Every backend implements it.
+The `Storage` interface is **the** abstraction. Every backend implements it. **31 methods** (including `Close`; `ScheduleRetry` and `SetJobResult` added in Band 3).
 
 ```go
 type Storage interface {
@@ -639,6 +639,13 @@ type Storage interface {
 
     // RemoveExpired deletes jobs with a terminal state older than the cutoff.
     RemoveExpired(ctx context.Context, cutoff time.Time) (int64, error)
+
+    // ScheduleRetry moves a Failed job to Scheduled with enqueue_at (retry backoff).
+    ScheduleRetry(ctx context.Context, jobID string, enqueueAt time.Time) error
+
+    // SetJobResult stores handler stdout (JSON) on the job before Succeeded (cap 64KB).
+    SetJobResult(ctx context.Context, jobID string, result []byte) error
+
     Close() error
 }
 
@@ -1393,7 +1400,7 @@ POST /v1/jobs/{id}/requeue
 
 Works for `Failed` and **`Dead`** jobs. Resets the retry counter and moves the job back to `Enqueued` state.
 
-### Cancel in-flight (planned B5-011 / B3-009)
+### Cancel in-flight (B5-011 / B3-009) ✅
 
 ```
 POST /v1/jobs/{id}/cancel
