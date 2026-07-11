@@ -25,6 +25,8 @@ func RunServer(ctx context.Context, cfg *config.Config) error {
 		serverID = hostname
 	}
 
+	LogStartup(cfg, serverID)
+
 	store, err := config.OpenStorage(ctx, cfg.Storage, serverID)
 	if err != nil {
 		return fmt.Errorf("open storage: %w", err)
@@ -51,7 +53,12 @@ func RunServer(ctx context.Context, cfg *config.Config) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		logger.Info("http listening", "addr", cfg.ListenAddr())
+		base := BaseURL(cfg)
+		logger.Info("listening",
+			"url", base,
+			"api", base+"/v1",
+			"bind", cfg.ListenAddr(),
+		)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}

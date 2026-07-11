@@ -110,6 +110,8 @@ make ci       # fmt-check + vet + gocyclo + test
 make security # govulncheck + gocyclo + grype
 make cover    # memory backend ≥80% gate
 make version  # build and print version metadata
+make install  # install bin/gfire to $(go env GOPATH)/bin
+make server   # build + run daemon (creates gfire.yaml from example if missing)
 ```
 
 Binary output: `bin/gfire`.
@@ -117,9 +119,7 @@ Binary output: `bin/gfire`.
 ### Quick start (in-memory)
 
 ```sh
-make build
-cp gfire.example.yaml gfire.yaml   # optional; defaults work without a file
-./bin/gfire server --config gfire.yaml
+make server   # or: make build && ./bin/gfire server --config gfire.yaml
 ```
 
 Enqueue a job:

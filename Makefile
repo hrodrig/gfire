@@ -15,13 +15,15 @@ ifeq ($(strip $(GIT_BRANCH)),)
   GIT_BRANCH := unknown
 endif
 BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-LDFLAGS := -s -w -X 'main.version=$(VERSION)' -X 'main.commit=$(GIT_COMMIT)' -X 'main.branch=$(GIT_BRANCH)' -X 'main.buildDate=$(BUILD_DATE)'
+LDFLAGS := -s -w -X 'github.com/hrodrig/gfire/internal/version.Version=$(VERSION)' -X 'github.com/hrodrig/gfire/internal/version.Commit=$(GIT_COMMIT)' -X 'github.com/hrodrig/gfire/internal/version.Branch=$(GIT_BRANCH)' -X 'github.com/hrodrig/gfire/internal/version.BuildDate=$(BUILD_DATE)'
 
 TAG := v$(VERSION)
 COVER_MIN ?= 80
 GRYPE_FAIL_ON ?= high
 GRYPE_DIR_EXCLUDES := --exclude './bin/**' --exclude './dist/**' --exclude './docs/**'
 STRICT_RELEASE ?= 0
+
+GFIRE_CONFIG ?= gfire.yaml
 
 PG_DSN ?= postgres://gfire:gfire@localhost:5432/gfire?sslmode=disable
 MIGRATE_PATH := internal/storage/postgres/migrations
@@ -34,7 +36,7 @@ DOCKER_BUILD_ARGS := \
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all build version test cover fmt fmt-check lint-fix lint vet clean install \
+.PHONY: help all build version test cover fmt fmt-check lint-fix lint vet clean install server \
 	docker-build docker-scan govulncheck vulncheck ci gocyclo grype security release-check snapshot \
 	db-up db-down db-psql migrate-up migrate-down migrate-create
 
@@ -60,6 +62,7 @@ help:
 	@echo "  make docker-build   Build container image"
 	@echo "  make docker-scan    docker-build + Grype image scan"
 	@echo "  make install        Install binary to $(BINDIR)"
+	@echo "  make server         Build and run gfire server (GFIRE_CONFIG=$(GFIRE_CONFIG))"
 	@echo "  make clean          Remove bin/ artifacts and coverage.out"
 	@echo "  make db-up          Start postgres/redis/valkey via docker compose"
 	@echo "  make db-down        Stop compose stack"
@@ -72,6 +75,7 @@ help:
 	@echo "  GRYPE_FAIL_ON=      Grype severity gate (default: $(GRYPE_FAIL_ON))"
 	@echo "  IMAGE=<name:tag>    Docker image tag (default: $(IMAGE))"
 	@echo "  PG_DSN=<dsn>        Postgres DSN for migrate (default: local gfire)"
+	@echo "  GFIRE_CONFIG=<path> Config for make server (default: gfire.yaml)"
 	@echo "  STRICT_RELEASE=1    release-check also runs docker-scan"
 
 all: fmt vet test gocyclo cover build
@@ -179,6 +183,17 @@ install: build
 	install -d "$(BINDIR)"
 	install -m 755 $(BIN_DIR)/$(APP_NAME) "$(BINDIR)/$(APP_NAME)"
 	@echo "Installed $(APP_NAME) to $(BINDIR)."
+
+server: build
+	@if [ -n "$(GFIRE_CONFIG)" ] && [ ! -f "$(GFIRE_CONFIG)" ] && [ -f gfire.example.yaml ]; then \
+		cp gfire.example.yaml "$(GFIRE_CONFIG)"; \
+		echo "Created $(GFIRE_CONFIG) from gfire.example.yaml"; \
+	fi
+	@if [ -n "$(GFIRE_CONFIG)" ]; then \
+		./$(BIN_DIR)/$(APP_NAME) server --config "$(GFIRE_CONFIG)"; \
+	else \
+		./$(BIN_DIR)/$(APP_NAME) server; \
+	fi
 
 # ──────────────────────────────────────────────
 # Docker

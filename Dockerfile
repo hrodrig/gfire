@@ -14,7 +14,7 @@ ARG GIT_COMMIT=unknown
 ARG GIT_BRANCH=unknown
 ARG BUILD_DATE=unknown
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath \
-	-ldflags="-s -w -X main.version=${APP_VERSION} -X main.commit=${GIT_COMMIT} -X main.branch=${GIT_BRANCH} -X main.buildDate=${BUILD_DATE}" \
+	-ldflags="-s -w -X github.com/hrodrig/gfire/internal/version.Version=${APP_VERSION} -X github.com/hrodrig/gfire/internal/version.Commit=${GIT_COMMIT} -X github.com/hrodrig/gfire/internal/version.Branch=${GIT_BRANCH} -X github.com/hrodrig/gfire/internal/version.BuildDate=${BUILD_DATE}" \
 	-o /out/gfire ./cmd/gfire
 
 FROM gcr.io/distroless/static-debian12:nonroot

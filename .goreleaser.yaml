@@ -30,10 +30,10 @@ builds:
     ldflags:
       - -s
       - -w
-      - -X main.version={{.Version}}
-      - -X main.commit={{.ShortCommit}}
-      - -X main.branch={{.Branch}}
-      - -X main.buildDate={{.Date}}
+      - -X github.com/hrodrig/gfire/internal/version.Version={{.Version}}
+      - -X github.com/hrodrig/gfire/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/hrodrig/gfire/internal/version.Branch={{.Branch}}
+      - -X github.com/hrodrig/gfire/internal/version.BuildDate={{.Date}}
 
 archives:
   - id: gfire-dist
