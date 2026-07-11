@@ -13,6 +13,7 @@
 - **Prometheus metrics** for production monitoring (Grafana dashboards).
 - **Full web dashboard** comes after v1 as a separate React project (GFireUI) that talks to the same REST API.
 - Each band is **shippable independently**. Band 3 alone gives you a working job engine.
+- **Product wedge (v1):** PostgreSQL (or Redis) + HTTP/curl + continuations — not Faktory/BullMQ throughput. Jobs are ~1KB instruction cards; heavy data stays in handlers (S3, DB).
 
 ---
 
@@ -212,7 +213,13 @@ GFire uses **shared-state coordination**, not leader election. All nodes are pee
 | `recovery.go` — Panic recovery middleware                                        | 1 day       |
 | `retry.go` — Automatic retry with exponential backoff + jitter                   | 1 day       |
 | Integration test: in-memory engine, 100 jobs, verify all complete                | 1 day       |
+| **B3-009** In-flight cancel — cancel context → SIGTERM handler subprocess → `Cancelled` | 1 day  |
+| **B3-010** Per-queue concurrency cap — `server.queue_limits`; skip dequeue at cap | 1 day |
+| **B3-011** Job result capture — handler stdout JSON → storage `result` (cap 64KB) | 1 day       |
+| **B3-012** Dead (DLQ) state — after `retry_max` exhausted → `Dead` (not retryable) | 0.5 day  |
 
+
+**Handler model note:** one subprocess per job adds ~100–500ms startup. Fine for minute/hour jobs (SAP ETL); poor for sub-50ms micro-tasks. Long-lived handler pool is post-v1 (see deferred list below).
 
 **Architecture:**
 
@@ -272,6 +279,7 @@ Engine.Stop():
 | `recurring.go` — RecurringManager (robfig/cron + distributed lock)         | 2 days      |
 | `engine/coordinator.go` — Heartbeat, orphan recovery, stale server cleanup | 2 days      |
 | `continuation.go` — Fire child jobs on parent terminal state               | 1 day       |
+| Continuation args: inject parent `result` (from B3-011) into child job args | 0.5 day     |
 | `cleanup.go` — RemoveExpired goroutine                                     | 1 day       |
 
 
@@ -309,6 +317,11 @@ Engine.Stop():
 | `api/handlers_servers.go` — Server listing                 | 1 day       |
 | `api/handlers_continuations.go` — Continuation creation    | 1 day       |
 | JSON error handling, validation, standard envelope         | 1 day       |
+| **B5-009** `POST /v1/jobs/enqueue/batch` — bulk enqueue (SAP/ETL card flood) | 1 day   |
+| **B5-010** `Idempotency-Key` header on enqueue — retry-safe, same `job_id`   | 1 day       |
+| **B5-011** `POST /v1/jobs/{id}/cancel` — abort in-flight job (engine B3-009) | 0.5 day     |
+| **B5-012** Optional Bearer auth — `auth.enabled` + `auth.token` middleware    | 0.5 day     |
+| **B5-013** `GET /openapi.json` — OpenAPI 3 spec for all `/v1/*` routes        | 1 day       |
 
 
 **Route table:**
@@ -316,12 +329,17 @@ Engine.Stop():
 ```
 # Jobs
 POST   /v1/jobs/enqueue              → 201 {job_id, status}
+POST   /v1/jobs/enqueue/batch        → 201 {job_ids[], accepted, rejected}   # B5-009
 POST   /v1/jobs/schedule             → 201 {job_id, enqueue_at, status}
-GET    /v1/jobs/{id}                  → 200 {job, states}
+GET    /v1/jobs/{id}                  → 200 {job, states, result?}
 GET    /v1/jobs                      → 200 [{jobs}] (?state=&queue=&offset=&limit=)
 POST   /v1/jobs/{id}/requeue         → 200 {status}
+POST   /v1/jobs/{id}/cancel          → 200 {status}                            # B5-011
 POST   /v1/jobs/{id}/delete          → 204
 POST   /v1/jobs/{id}/continue        → 201 {status}
+
+# Discovery
+GET    /openapi.json                 → 200 OpenAPI 3                           # B5-013
 
 # Queues
 GET    /v1/queues                    → 200 [{name, depth}]
@@ -366,6 +384,9 @@ GET    /metrics                      → 200 text/plain
 | `gfire server status` — active nodes, uptime, version           | 0.5 day     |
 | `gfire migrate` — run storage migrations                        | 0.5 day     |
 | Prometheus endpoint `GET /metrics` (always on)                  | 1 day       |
+| **B6-009** `gfire job list --state dead` — poison / DLQ filter  | 0.5 day     |
+| **B6-010** `gfire job cancel <id>` — CLI cancel in-flight       | 0.5 day     |
+| **B6-011** `gfire_jobs_dead_total{queue}` Prometheus counter    | 0.5 day     |
 
 
 **Prometheus metrics exposed:**
@@ -374,6 +395,7 @@ GET    /metrics                      → 200 text/plain
 gfire_jobs_enqueued_total{queue="default"}
 gfire_jobs_succeeded_total{queue="default"}
 gfire_jobs_failed_total{queue="default"}
+gfire_jobs_dead_total{queue="default"}          # B6-011 — poison / DLQ
 gfire_jobs_duration_seconds{queue="default",name="sap_extract"}
 gfire_workers_active{server_id="node-a"}
 gfire_queue_depth{queue="default"}
@@ -391,6 +413,19 @@ server:
   shutdown_timeout: 45s
   default_timeout: 30s      # applied when job.Timeout = 0
   max_body_size: 10485760   # 10MB max request body (413 if exceeded)
+  queues:                    # priority-ordered dequeue list
+    - critical
+    - default
+    - low
+
+auth:                        # B5-012 — optional, off by default
+  enabled: false
+  token: ""
+
+queue_limits:                # B3-010 — per-queue concurrency caps
+  critical: 2                # 0 = no cap beyond server.workers
+  default: 0
+  low: 0
 ```
 
 **No embedded UI.** GFire v1 is a headless service. Monitoring options:
@@ -449,6 +484,29 @@ server:
 **Depends on:** v1.0.0 (engine, API, continuations, storage backends).
 
 **🔑 v1.1.0** — "Headless DAG orchestration with join and fan-out barriers."
+
+---
+
+
+
+## Post-v1 enhancements (deferred — do not block v1.0.0)
+
+> From product review (July 2026). Track here; implement after v1 API is stable unless demand forces earlier.
+
+
+| ID | Feature | Why | Target |
+| --- | --- | --- | --- |
+| PV-001 | **GFireUI** (React dashboard) | Ops visibility, monetization | Post-v1 separate repo |
+| PV-002 | **OpenTelemetry traces** | Multi-service prod debugging | v1.1+ / Band 7+ |
+| PV-003 | **Continuations v2 — fan-out** (N child jobs) | Parallel ETL branches | v1.1+ (Band 8 pipelines overlap) |
+| PV-004 | **Payload offload** (S3/etc.) for args >10MB | Large inline payloads | On customer demand |
+| PV-005 | **Rate limit per queue** | Multi-tenant fairness | Enterprise / plugin |
+| PV-006 | **Per-queue isolated worker pools** | critical vs low isolation | Engine v2 |
+| PV-007 | **Webhooks on terminal state** | Push vs poll for ops | Post-v1 / enterprise |
+| PV-008 | **Unique jobs** (dedupe by name+args hash) | Sidekiq-style | On demand |
+| PV-009 | **Long-lived handler pool** (JSON-lines stdin) | Sub-50ms job latency | v1.x optional |
+
+**Explicit non-goals for v1:** compete with BullMQ/Kafka throughput; embedded UI; inline GB payloads; Raft/leader election.
 
 ---
 

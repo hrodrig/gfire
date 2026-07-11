@@ -186,8 +186,9 @@ sequenceDiagram
 | **Job**          | Serializable invocation data (instruction card, not payload)  |
 | **State**        | Job lifecycle node (immutable, append-only)                   |
 | **Worker**       | Goroutine inside the engine that dequeues and runs            |
-| **Queue**        | Named FIFO (default "default"), per-queue concurrency         |
+| **Queue**        | Named FIFO (default "default"), optional per-queue concurrency cap |
 | **Handler**      | External binary from YAML `cmd` — GFire spawns one per job    |
+| **Result**       | Optional handler stdout JSON (cap 64KB), stored for continuations |
 | **Middleware**   | Pluggable chain around job execution                          |
 | **RecurringJob** | Cron schedule → enqueues on tick                              |
 | **Continuation** | Conditional child job (on success / failure / any)            |
@@ -200,6 +201,8 @@ sequenceDiagram
 ## 3. REST API (HTTP)
 
 Your application never imports GFire. It sends HTTP requests to the GFire server.
+
+> **Implementation status:** Core routes ship in Band 5 (ROADMAP). Items marked **(planned)** are specified here for contract tests; see ROADMAP IDs `B5-009`–`B5-013`.
 
 ### Base URL
 
@@ -217,12 +220,21 @@ http://gfire:8080/v1
 
 ```
 POST   /v1/jobs/enqueue              → { job_id, status }
+POST   /v1/jobs/enqueue/batch        → { job_ids[], accepted, rejected }   # planned B5-009
 POST   /v1/jobs/schedule             → { job_id, enqueue_at, status }
-GET    /v1/jobs/{id}                  → job detail + state history
+GET    /v1/jobs/{id}                  → job detail + state history + result?
 GET    /v1/jobs                      → paginated, filterable (?state=&queue=&limit=&offset=)
 POST   /v1/jobs/{id}/requeue         → { status }
+POST   /v1/jobs/{id}/cancel          → { status }                            # planned B5-011
 POST   /v1/jobs/{id}/delete          → { status }
 ```
+
+**Headers (enqueue / batch):**
+
+| Header            | Required | Purpose |
+| ----------------- | -------- | ------- |
+| `Idempotency-Key` | No       | Client retry dedupe — same key returns same `job_id` **(planned B5-010)** |
+| `Authorization`   | When `auth.enabled` | `Bearer <token>` **(planned B5-012)** |
 
 **Enqueue request:**
 
@@ -247,6 +259,19 @@ POST   /v1/jobs/{id}/delete          → { status }
   "queue": "default"
 }
 ```
+
+**Bulk enqueue request (planned B5-009):**
+
+```json
+{
+  "jobs": [
+    { "name": "sap_extract", "args": { "source": "s3://bucket/a.csv" }, "queue": "critical" },
+    { "name": "sap_extract", "args": { "source": "s3://bucket/b.csv" }, "queue": "critical" }
+  ]
+}
+```
+
+Each job in the batch is an instruction card (~1 KB). Partial acceptance is allowed: valid jobs enqueue, invalid entries appear in `rejected` with reasons.
 
 **Schedule request:**
 
@@ -277,6 +302,15 @@ GET    /v1/recurring                 → all recurring definitions
 POST   /v1/recurring                 → create recurring job
 DELETE /v1/recurring/{id}            → remove recurring job
 POST   /v1/recurring/{id}/trigger    → fire immediately, outside schedule
+```
+
+#### Discovery
+
+```
+GET    /openapi.json                 → OpenAPI 3 document for all /v1/* routes   # planned B5-013
+GET    /healthz                      → { status: "ok" }
+GET    /readyz                       → { status: "ok" } (storage reachable)
+GET    /metrics                      → Prometheus text (when metrics.enabled)
 ```
 
 **Recurring create request:**
@@ -369,9 +403,17 @@ The handler (`cmd`) is responsible for fetching and processing the referenced da
 
 **Future option:** If inline large payloads become necessary, GFire could store them in object storage transparently (the API accepts the large body, GFire streams it to S3, stores the reference in the DB, and provides the file to the subprocess handler via a temp file or pipe). This is a post-v1 enhancement.
 
-### Authentication (future)
+### Authentication
 
-Optional API key via `Authorization: Bearer <token>` header. Configurable per-server.
+Optional Bearer token when `auth.enabled: true`. Off by default (local/dev, private network).
+
+```
+Authorization: Bearer <auth.token>
+```
+
+Unauthenticated requests to protected routes return `401`. When disabled, all `/v1/*` routes are open — do not expose `:8080` on the public internet without TLS + auth.
+
+**Planned:** Band 5 (`B5-012`).
 
 ---
 
@@ -391,6 +433,7 @@ type Job struct {
     Queue     string   // queue name
     CreatedAt time.Time
     RetryMax  int      // per-job override of default retry count
+    Result    []byte   // handler stdout JSON (optional, cap 64KB) — planned B3-011
 }
 ```
 
@@ -405,18 +448,27 @@ type Job struct {
                            │ fetched by worker (atomic)
                            ▼
                      ┌───────────┐
-                     │ Processing│ ───► success ──► ┌───────────┐
-                     └─────┬─────┘                  │ Succeeded │
+          cancel ──► │ Processing│ ───► success ──► ┌───────────┐
+          (B5-011)   └─────┬─────┘                  │ Succeeded │
                            │ error / panic          └─────┬─────┘
                            ▼                              │
                      ┌────────┐                           │
-                     │ Failed │  ◄── retries exhausted    │
+                     │ Failed │  ◄── error, retries left   │
                      └───┬────┘                           │
                          │ retry N < Max                  │
                          ▼                                │
                      ┌──────────┐                         │
                      │ Scheduled│ ──► Enqueued (re-fetch) │
-                     └──────────┘                         │
+                     └───┬──────┘                         │
+                         │ retries exhausted (B3-012)     │
+                         ▼                                │
+                     ┌────────┐                           │
+                     │  Dead  │  poison / DLQ — manual     │
+                     └────────┘  requeue only              │
+                                                          │
+                     ┌───────────┐                         │
+                     │ Cancelled │ ◄── cancel API (B5-011) │
+                     └───────────┘                         │
                                                           │
                      ┌──────────┐                         │
                      │ Awaiting │ ◄── continuation parent │
@@ -430,6 +482,14 @@ type Job struct {
     └──────────┘
 ```
 
+**State semantics:**
+
+| State       | Retryable | Meaning |
+| ----------- | --------- | ------- |
+| `Failed`    | Yes       | Handler error; retry middleware may schedule another attempt |
+| `Dead`      | No        | `retry_max` exhausted — poison / DLQ; inspect via `--state dead` |
+| `Cancelled` | No        | Operator cancelled in-flight job; handler received SIGTERM |
+
 
 
 ### State transition rules
@@ -440,11 +500,15 @@ type Job struct {
 | Enqueued   | Processing | Worker dequeues (atomic fetch)         |
 | Processing | Succeeded  | Handler returns nil                    |
 | Processing | Failed     | Handler returns error                  |
+| Processing | Cancelled  | Cancel API / engine cancel signal (B3-009) |
 | Failed     | Enqueued   | Manual re-queue via API/CLI            |
-| Failed     | Deleted    | Cleanup TTL expired                    |
 | Failed     | Scheduled  | Retry middleware enqueues with delay   |
+| Failed     | Dead       | `retry_max` exhausted (B3-012)         |
+| Dead       | Enqueued   | Manual re-queue via API/CLI            |
 | Scheduled  | Enqueued   | Scheduler goroutine fires              |
 | Succeeded  | Deleted    | Cleanup TTL expired                    |
+| Cancelled  | Deleted    | Cleanup TTL expired                    |
+| Dead       | Deleted    | Cleanup TTL expired                    |
 | Awaiting   | Enqueued   | Parent reaches matching terminal state |
 | *          | Deleted    | Manual delete                          |
 
@@ -832,10 +896,14 @@ server:
   host: "0.0.0.0"
   port: 8080
   workers: 8                     # goroutine pool size (default: 2x CPUs)
-  queues:                        # priority-ordered
+  queues:                        # priority-ordered dequeue list
     - "critical"
     - "default"
     - "low"
+  queue_limits:                  # optional per-queue concurrency caps (B3-010)
+    critical: 2                  # max concurrent Processing jobs on this queue; 0 = no cap
+    default: 0
+    low: 0
   dequeue_timeout: "5s"          # max block per fetch
   shutdown_timeout: "30s"        # max wait for in-flight jobs on stop
   max_body_size: 10485760        # 10MB max request body (413 if exceeded)
@@ -896,6 +964,12 @@ gfire server --backend redis --redis-addr "10.0.0.5:6379"
 
 
 ### Worker goroutine loop
+
+Workers respect `queue_limits` before dequeue: if a queue is at its cap, skip it and try the next queue in priority order.
+
+On success, if handler stdout is valid JSON and ≤64KB, persist it as `Job.Result` (B3-011).
+
+Cancel: when cancel is requested for a `Processing` job, the engine cancels the job context, sends **SIGTERM** to the handler subprocess, then transitions to `Cancelled` (B3-009).
 
 ```go
 func (w *worker) run(ctx context.Context) {
@@ -1071,6 +1145,8 @@ const (
 3. Filters by condition: `OnSucceeded` → match only Succeeded; `OnFailed` → match only Failed; `OnAny` → always
 4. For each matching continuation: enqueue child job (normal `Enqueue` call)
 5. Child runs like any other job — it's a regular job, just enqueued by continuation logic
+
+**Parent result (planned Band 4):** when the parent has a stored `Result` (B3-011), continuation dispatch may merge it into the child args (e.g. under `_parent_result`) so chains pass data, not just triggers.
 
 
 
@@ -1279,7 +1355,8 @@ func AuthMiddleware(validTenants []string) gfire.MiddlewareFunc {
 - Max attempts: 10
 - Delay: exponential backoff with jitter
   - Formula: `min(1 minute * 2^attempt + rand(0, 1000ms), 1 hour)`
-- After final failure: job stays in `Failed` state with `retry_exhausted: true` in state data
+- After final failure: job transitions to **`Dead`** state (poison / DLQ, B3-012) — not retryable until manual requeue
+- While retries remain: `Failed` → `Scheduled` → `Enqueued`
 
 
 
@@ -1306,7 +1383,18 @@ POST /v1/jobs/{id}/requeue
      {"reason": "manual retry after fixing data"}
 ```
 
-This resets the retry counter and moves the job back to Enqueued state.
+Works for `Failed` and **`Dead`** jobs. Resets the retry counter and moves the job back to `Enqueued` state.
+
+### Cancel in-flight (planned B5-011 / B3-009)
+
+```
+POST /v1/jobs/{id}/cancel
+     {"reason": "operator abort — bad deploy"}
+```
+
+Only valid when current state is `Processing`. Engine sends SIGTERM to handler subprocess; terminal state is `Cancelled` (not `Failed`, no retry).
+
+CLI equivalent: `gfire job cancel <id>` (Band 6, B6-010).
 
 ### Job-level override
 
@@ -1378,8 +1466,8 @@ GFire v1 ships **no embedded UI**. Monitoring and ops:
 
 | Tool       | How                                                                        |
 | ---------- | -------------------------------------------------------------------------- |
-| CLI        | `gfire job list --state failed`, `gfire queue list`, `gfire server status` |
-| REST       | `GET /v1/jobs`, `/v1/queues`, `/v1/servers`, `/v1/recurring`               |
+| CLI        | `gfire job list --state failed`, `gfire job list --state dead`, `gfire job cancel <id>`, `gfire queue list`, `gfire server status` |
+| REST       | `GET /v1/jobs`, `/v1/queues`, `/v1/servers`, `/v1/recurring`, `GET /openapi.json` |
 | Prometheus | `GET /metrics` (always on when `metrics.enabled`)                          |
 | Grafana    | External dashboards scrape `/metrics`                                      |
 
@@ -1396,6 +1484,7 @@ Separate React project. Talks only to the public REST API. Not part of the `gfir
 gfire_jobs_enqueued_total{queue}
 gfire_jobs_succeeded_total{queue}
 gfire_jobs_failed_total{queue}
+gfire_jobs_dead_total{queue}              # poison / DLQ — planned B6-011
 gfire_jobs_duration_seconds{queue,name}   # histogram
 gfire_workers_active{server_id}
 gfire_queue_depth{queue}
@@ -1515,6 +1604,13 @@ Post-v1 optional: `go.opentelemetry.io/otel` for traces.
 10. **Authentication** — **DECIDED: optional Bearer token** in config (`auth.enabled` / `auth.token`). Off by default for local/dev.
 11. **gRPC** — **DECIDED: REST only for v1.** Revisit if a concrete use case demands it.
 12. **Pipelines / DAG** — **DECIDED: first-class Pipelines post-v1.0.0 (Band 8).** v1 ships job queue + continuations only. Pipelines add `needs`, `fan_out`, and `on_all_success` barriers in the engine. Headless YAML + HTTP; no visual DAG editor in core. Design case #1: multi-source ETL → pivot → N destinations.
+13. **Bulk enqueue** — **DECIDED: `POST /v1/jobs/enqueue/batch` (B5-009).** Thousands of ~1 KB instruction cards per request; partial accept/reject. SAP/ETL card flood without N HTTP round-trips.
+14. **Idempotency-Key** — **DECIDED: optional header on enqueue/batch (B5-010).** Same key → same `job_id`; safe client retries under at-least-once API.
+15. **Cancel in-flight** — **DECIDED: `POST /v1/jobs/{id}/cancel` + engine SIGTERM (B3-009, B5-011).** Terminal state `Cancelled`; no automatic retry.
+16. **Dead / DLQ state** — **DECIDED: `Dead` after `retry_max` exhausted (B3-012).** Distinct from retryable `Failed`; filter via `--state dead` and `gfire_jobs_dead_total`.
+17. **Job result capture** — **DECIDED: handler stdout JSON → `Job.Result`, cap 64KB (B3-011).** Continuations may inject parent result into child args (Band 4).
+18. **Per-queue concurrency cap** — **DECIDED: `server.queue_limits` map (B3-010).** e.g. `critical: 2` limits parallel SAP extracts; `0` = no cap beyond `server.workers`.
+19. **OpenAPI** — **DECIDED: `GET /openapi.json` OpenAPI 3 spec (B5-013).** Curl-first API; generic clients without hand-written SDKs.
 
 
 
