@@ -18,6 +18,10 @@ type Config struct {
 	SchedulerInterval    time.Duration
 	SchedulerBatchSize   int
 	ServerHeartbeatTTL   time.Duration
+	ServerHeartbeatEvery time.Duration
+	OrphanJobStaleAge    time.Duration
+	CleanupInterval      time.Duration
+	JobRetention         time.Duration
 }
 
 // DefaultConfig returns sensible defaults for local development.
@@ -71,5 +75,11 @@ func (c *Config) normalize() {
 	}
 	if c.ServerHeartbeatTTL <= 0 {
 		c.ServerHeartbeatTTL = 30 * time.Second
+	}
+	if c.ServerHeartbeatEvery <= 0 {
+		c.ServerHeartbeatEvery = 5 * time.Second
+	}
+	if c.OrphanJobStaleAge <= 0 {
+		c.OrphanJobStaleAge = 5 * time.Minute
 	}
 }

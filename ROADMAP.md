@@ -269,179 +269,80 @@ Engine.Stop():
 
 
 
-## Band 4 — Scheduler + Recurring + Continuations (Week 5–6)
+## Band 4 — Scheduler + Recurring + Continuations (Week 5–6) — partial ✅
 
-> Time-based and conditional job execution.
-
-
-| Deliverable                                                                | Est. effort |
-| -------------------------------------------------------------------------- | ----------- |
-| `engine/scheduler.go` — Scheduled → Enqueued poller                        | 1 day       |
-| `recurring.go` — RecurringManager (robfig/cron + distributed lock)         | 2 days      |
-| `engine/coordinator.go` — Heartbeat, orphan recovery, stale server cleanup | 2 days      |
-| `continuation.go` — Fire child jobs on parent terminal state               | 1 day       |
-| Continuation args: inject parent `result` (from B3-011) into child job args | 0.5 day     |
-| `cleanup.go` — RemoveExpired goroutine                                     | 1 day       |
+> Time-based and conditional job execution. **v0.6.0 ships continuations + coordinator; recurring cron deferred to v0.5.0 tag.**
 
 
-**Scheduler design:**
+| Deliverable                                                                | Status |
+| -------------------------------------------------------------------------- | ------ |
+| Scheduled → Enqueued poller (engine `schedulerLoop`)                       | ✅      |
+| `engine/coordinator.go` — server heartbeat + orphan job requeue              | ✅      |
+| `engine/continuations.go` — fire child jobs + parent result merge            | ✅      |
+| `engine/coordinator.go` — cleanup via `RemoveExpired`                        | ✅      |
+| `recurring.go` — RecurringManager (robfig/cron + distributed lock)         | ⬜      |
+| Stale server registry sweep (full orphan server path)                        | ⬜      |
 
-- Polls every `scheduler_interval` (default 1s)
-- Fetches due scheduled jobs in batches (default 100)
-- Moves each to Enqueued state atomically
-- Multiple nodes can run the scheduler safely — first write wins (atomic conditional)
 
-**Recurring design:**
-
-- On engine start: load recurring definitions from storage → register with `robfig/cron/v3`
-- Cron tick: acquire distributed lock `lock:recurring:<id>` → only winning node fires
-- Fire = enqueue a new Job, update last_run/next_run in storage
-- Survives restarts (persisted in storage)
-
-**🔑 v0.5.0** — "Scheduled, recurring, and chained jobs work."
+**🔑 v0.5.0** — "Recurring cron + full coordinator." (remaining Band 4)
 
 ---
 
 
 
-## Band 5 — REST API (Week 6–7)
+## Band 5 — REST API (Week 6–7) — core ✅
 
-> HTTP API so applications can talk to GFire.
-
-
-| Deliverable                                                | Est. effort |
-| ---------------------------------------------------------- | ----------- |
-| `api/api.go` — HTTP server setup, route registration, CORS | 1 day       |
-| `api/handlers_jobs.go` — All job endpoints                 | 2 days      |
-| `api/handlers_queues.go` — Queue inspection                | 1 day       |
-| `api/handlers_recurring.go` — CRUD for recurring           | 1 day       |
-| `api/handlers_servers.go` — Server listing                 | 1 day       |
-| `api/handlers_continuations.go` — Continuation creation    | 1 day       |
-| JSON error handling, validation, standard envelope         | 1 day       |
-| **B5-009** `POST /v1/jobs/enqueue/batch` — bulk enqueue (SAP/ETL card flood) | 1 day   |
-| **B5-010** `Idempotency-Key` header on enqueue — retry-safe, same `job_id`   | 1 day       |
-| **B5-011** `POST /v1/jobs/{id}/cancel` — abort in-flight job (engine B3-009) | 0.5 day     |
-| **B5-012** Optional Bearer auth — `auth.enabled` + `auth.token` middleware    | 0.5 day     |
-| **B5-013** `GET /openapi.json` — OpenAPI 3 spec for all `/v1/*` routes        | 1 day       |
+> HTTP API so applications can talk to GFire. **v0.6.0 = curl-usable core; B5-009–013 deferred.**
 
 
-**Route table:**
+| Deliverable                                                | Status |
+| ---------------------------------------------------------- | ------ |
+| `internal/api/` — routes, JSON errors, max body, Bearer auth | ✅   |
+| Jobs: enqueue, schedule, get, list, requeue, cancel, continue | ✅  |
+| Queues + servers + healthz/readyz                          | ✅      |
+| Recurring CRUD handlers                                    | ⬜      |
+| **B5-009** bulk enqueue                                    | ⬜      |
+| **B5-010** Idempotency-Key                                 | ⬜      |
+| **B5-013** OpenAPI                                         | ⬜      |
 
-```
-# Jobs
-POST   /v1/jobs/enqueue              → 201 {job_id, status}
-POST   /v1/jobs/enqueue/batch        → 201 {job_ids[], accepted, rejected}   # B5-009
-POST   /v1/jobs/schedule             → 201 {job_id, enqueue_at, status}
-GET    /v1/jobs/{id}                  → 200 {job, states, result?}
-GET    /v1/jobs                      → 200 [{jobs}] (?state=&queue=&offset=&limit=)
-POST   /v1/jobs/{id}/requeue         → 200 {status}
-POST   /v1/jobs/{id}/cancel          → 200 {status}                            # B5-011
-POST   /v1/jobs/{id}/delete          → 204
-POST   /v1/jobs/{id}/continue        → 201 {status}
 
-# Discovery
-GET    /openapi.json                 → 200 OpenAPI 3                           # B5-013
-
-# Queues
-GET    /v1/queues                    → 200 [{name, depth}]
-GET    /v1/queues/{name}             → 200 {name, depth, stats}
-
-# Recurring
-GET    /v1/recurring                 → 200 [{entries}]
-POST   /v1/recurring                 → 201 {id}
-DELETE /v1/recurring/{id}            → 204
-POST   /v1/recurring/{id}/trigger    → 200 {job_id}
-
-# Servers
-GET    /v1/servers                   → 200 [{servers}]
-
-# Health
-GET    /healthz                      → 200 {status: "ok"}
-GET    /readyz                       → 200 {status: "ok"} (waits for storage)
-
-# Metrics (Prometheus)
-GET    /metrics                      → 200 text/plain
-```
-
-**🔑 v0.6.0** — "Full REST API. Any language can submit jobs via curl."
+**🔑 v0.6.0** — "Enqueue and inspect jobs via curl." ✅
 
 ---
 
 
 
-## Band 6 — CLI + Monitoring (Week 7)
+## Band 6 — CLI + Monitoring (Week 7) — core ✅
 
-> CLI for server management + Prometheus metrics for production monitoring.
-
-
-| Deliverable                                                     | Est. effort |
-| --------------------------------------------------------------- | ----------- |
-| `cmd/gfire/main.go` — Cobra CLI entry point                     | 1 day       |
-| `gfire server` — Start daemon (load config, start engine + API) | 1 day       |
-| `gfire job list --state failed --limit 20`                      | 1 day       |
-| `gfire job get <id>`                                            | 0.5 day     |
-| `gfire job requeue <id>`                                        | 0.5 day     |
-| `gfire queue list`                                              | 0.5 day     |
-| `gfire server status` — active nodes, uptime, version           | 0.5 day     |
-| `gfire migrate` — run storage migrations                        | 0.5 day     |
-| Prometheus endpoint `GET /metrics` (always on)                  | 1 day       |
-| **B6-009** `gfire job list --state dead` — poison / DLQ filter  | 0.5 day     |
-| **B6-010** `gfire job cancel <id>` — CLI cancel in-flight       | 0.5 day     |
-| **B6-011** `gfire_jobs_dead_total{queue}` Prometheus counter    | 0.5 day     |
+> CLI for server management. **v0.6.0 ships server + job inspect; metrics/migrate deferred.**
 
 
-**Prometheus metrics exposed:**
+| Deliverable                                                     | Status |
+| --------------------------------------------------------------- | ------ |
+| Cobra CLI (`internal/cli`)                                      | ✅      |
+| `gfire server` — engine + API + SIGTERM shutdown                  | ✅      |
+| `gfire job list/get/requeue`                                    | ✅      |
+| `gfire migrate`, `gfire queue list`, `gfire server status`      | ⬜      |
+| Prometheus `GET /metrics`                                       | ⬜      |
+| **B6-009–011** dead filter, CLI cancel, dead metric             | ⬜      |
+
+
+**🔑 v0.6.0 CLI milestone** — `gfire server` + job inspect ✅
+
+**Route table (implemented in v0.6.0 unless noted):**
 
 ```
-gfire_jobs_enqueued_total{queue="default"}
-gfire_jobs_succeeded_total{queue="default"}
-gfire_jobs_failed_total{queue="default"}
-gfire_jobs_dead_total{queue="default"}          # B6-011 — poison / DLQ
-gfire_jobs_duration_seconds{queue="default",name="sap_extract"}
-gfire_workers_active{server_id="node-a"}
-gfire_queue_depth{queue="default"}
-gfire_servers_active
-gfire_servers_stale
+POST   /v1/jobs/enqueue, /schedule, GET /v1/jobs, GET /v1/jobs/{id}
+POST   /v1/jobs/{id}/requeue, /cancel, /continue
+GET    /v1/queues, /v1/queues/{name}, GET /v1/servers
+GET    /healthz, /readyz
+POST   /v1/jobs/enqueue/batch, GET /openapi.json, /v1/recurring/*  → planned
+GET    /metrics                                                   → planned
 ```
 
-**Config (headless — no dashboard):**
+**Band 4 notes (recurring — planned v0.5.0):** robfig/cron + lock `recurring:<id>`; scheduler poll already in engine.
 
-```yaml
-server:
-  host: "0.0.0.0"
-  port: 8080
-  workers: 8
-  shutdown_timeout: 45s
-  default_timeout: 30s      # applied when job.Timeout = 0
-  max_body_size: 10485760   # 10MB max request body (413 if exceeded)
-  queues:                    # priority-ordered dequeue list
-    - critical
-    - default
-    - low
-
-auth:                        # B5-012 — optional, off by default
-  enabled: false
-  token: ""
-
-queue_limits:                # B3-010 — per-queue concurrency caps
-  critical: 2                # 0 = no cap beyond server.workers
-  default: 0
-  low: 0
-
-# Handler registry — see SPECIFICATIONS.md §8
-handlers:
-  - name: send_email
-    cmd: /usr/local/bin/send-email
-```
-
-**No embedded UI.** GFire v1 is a headless service. Monitoring options:
-
-- `gfire job list --state failed` for quick CLI checks
-- `GET /metrics` for Prometheus + Grafana
-- `GET /v1/*` for programmatic access
-- External GFireUI (React, separate project) post-v1
-
-**🔑 v0.7.0** — "CLI works. Prometheus metrics on. Ready for production monitoring."
+**Band 6 config reference:** see `gfire.example.yaml` and SPEC §8.
 
 ---
 
@@ -525,9 +426,9 @@ Week 1  │ Band 0 ─ Foundation                      ✅ v0.1.0
 Week 2-3│ Band 1 ─ PostgreSQL                       ✅ v0.2.0
 Week 3-4│ Band 2 ─ Redis / ValKey                   ✅ v0.3.0
 Week 4-5│ Band 3 ─ Engine: workers + middleware      ✅ v0.4.0
-Week 5-6│ Band 4 ─ Scheduler + recurring + cont.    ⬜ v0.5.0
-Week 6-7│ Band 5 ─ REST API                         ⬜ v0.6.0
-Week 7  │ Band 6 ─ CLI + Prometheus metrics         ⬜ v0.7.0
+Week 5-6│ Band 4 ─ Scheduler + recurring + cont.    ▶ partial (v0.6.0)
+Week 6-7│ Band 5 ─ REST API (core)                  ✅ v0.6.0
+Week 7  │ Band 6 ─ CLI (core)                       ✅ v0.6.0
 Week 8  │ Band 7 ─ Polish, Docker, release          ⬜ v1.0.0
 Post    │ Band 8 ─ Pipelines (DAG)                  ⬜ v1.1.0
 ```

@@ -478,3 +478,78 @@ func TestStorage_JobHeartbeatNotFound(t *testing.T) {
 		t.Fatal("expected ErrNotFound for unknown job")
 	}
 }
+
+// TestStorage_ScheduleRetrySetResult covers retry scheduling, result storage,
+// scheduled removal, recurring jobs, counter helpers, and Close.
+func TestStorage_ScheduleRetrySetResult(t *testing.T) {
+	ctx := context.Background()
+	s := memory.New()
+
+	jobID, _ := s.Enqueue(ctx, "default", &domain.Job{Name: "retry_test"})
+	_, _ = s.Dequeue(ctx, []string{"default"}, 2*time.Second)
+	_ = s.ApplyState(ctx, jobID, domain.StateProcessing, &domain.JobState{
+		Name:   domain.StateFailed,
+		Reason: "boom",
+	})
+
+	retryAt := time.Now().Add(5 * time.Minute)
+	if err := s.ScheduleRetry(ctx, jobID, retryAt); err != nil {
+		t.Fatalf("ScheduleRetry: %v", err)
+	}
+	scheduled, _ := s.GetCounter(ctx, "scheduled")
+	if scheduled != 1 {
+		t.Fatalf("expected scheduled counter 1, got %d", scheduled)
+	}
+
+	if err := s.SetJobResult(ctx, jobID, []byte(`{"ok":true}`)); err != nil {
+		t.Fatalf("SetJobResult: %v", err)
+	}
+	js, _ := s.GetJob(ctx, jobID)
+	if string(js.Job.Result) != `{"ok":true}` {
+		t.Fatalf("unexpected result: %s", js.Job.Result)
+	}
+
+	if err := s.RemoveScheduled(ctx, jobID); err != nil {
+		t.Fatalf("RemoveScheduled: %v", err)
+	}
+
+	entry := &domain.RecurringJobEntry{
+		ID:       "daily-echo",
+		JobName:  "echo",
+		Queue:    "default",
+		CronExpr: "0 * * * *",
+		Enabled:  true,
+	}
+	if err := s.UpsertRecurring(ctx, entry); err != nil {
+		t.Fatalf("UpsertRecurring: %v", err)
+	}
+	recurring, err := s.GetRecurringJobs(ctx)
+	if err != nil {
+		t.Fatalf("GetRecurringJobs: %v", err)
+	}
+	if len(recurring) != 1 || recurring[0].ID != "daily-echo" {
+		t.Fatalf("unexpected recurring jobs: %+v", recurring)
+	}
+	if err := s.RemoveRecurring(ctx, "daily-echo"); err != nil {
+		t.Fatalf("RemoveRecurring: %v", err)
+	}
+	recurring, _ = s.GetRecurringJobs(ctx)
+	if len(recurring) != 0 {
+		t.Fatalf("expected 0 recurring jobs after remove, got %d", len(recurring))
+	}
+
+	if err := s.IncrementCounter(ctx, "custom", 3); err != nil {
+		t.Fatalf("IncrementCounter: %v", err)
+	}
+	all, err := s.GetAllCounters(ctx, 0, 100)
+	if err != nil {
+		t.Fatalf("GetAllCounters: %v", err)
+	}
+	if all["custom"] != 3 {
+		t.Fatalf("expected custom=3, got %d", all["custom"])
+	}
+
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+}

@@ -24,7 +24,7 @@
 !CODE_OF_CONDUCT.md
 !Dockerfile
 !Dockerfile.release
-# !gfire.example.yaml
+!gfire.example.yaml
 
 # ── Docs / assets ──
 !docs/

@@ -69,15 +69,24 @@ func (e *Engine) processTicket(ticket *domain.JobTicket) {
 	mctx := middleware.NewJobContext(jobCtx, job, attempt, e.storage, e.logger)
 	result, execErr := e.pipeline.Execute(mctx)
 
+	var terminal string
 	if execErr == nil {
-		if err := e.finalizeSuccess(jobCtx, job.ID, result); err != nil {
+		var err error
+		terminal, err = e.finalizeSuccess(jobCtx, job.ID, result)
+		if err != nil {
 			e.logger.Error("apply succeeded", "job_id", job.ID, "err", err)
+			return
 		}
-		return
+	} else {
+		var err error
+		terminal, err = e.finalizeFailure(jobCtx, job, attempt, execErr)
+		if err != nil {
+			e.logger.Error("finalize failure", "job_id", job.ID, "err", err)
+			return
+		}
 	}
-
-	if err := e.finalizeFailure(jobCtx, job, attempt, execErr); err != nil {
-		e.logger.Error("finalize failure", "job_id", job.ID, "err", err)
+	if terminal != "" {
+		e.fireContinuations(context.Background(), job.ID, terminal)
 	}
 }
 

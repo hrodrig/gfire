@@ -82,6 +82,12 @@ func (e *Engine) Start(ctx context.Context) error {
 		}
 		e.wg.Add(1)
 		go e.schedulerLoop()
+		e.wg.Add(1)
+		go e.coordinatorLoop()
+		if e.cfg.CleanupInterval > 0 && e.cfg.JobRetention > 0 {
+			e.wg.Add(1)
+			go e.cleanupLoop()
+		}
 		e.logger.Info("engine started", "server_id", e.cfg.ServerID, "workers", e.cfg.Workers)
 	})
 	return startErr
@@ -199,24 +205,30 @@ func (e *Engine) jobTimeout(job *domain.Job) time.Duration {
 	return e.cfg.DefaultTimeout
 }
 
-func (e *Engine) finalizeSuccess(ctx context.Context, jobID string, result []byte) error {
+func (e *Engine) finalizeSuccess(ctx context.Context, jobID string, result []byte) (string, error) {
 	if len(result) > 0 {
 		if err := e.storage.SetJobResult(ctx, jobID, result); err != nil {
-			return err
+			return "", err
 		}
 	}
-	return e.storage.ApplyState(ctx, jobID, domain.StateProcessing, &domain.JobState{
+	if err := e.storage.ApplyState(ctx, jobID, domain.StateProcessing, &domain.JobState{
 		Name: domain.StateSucceeded,
-	})
+	}); err != nil {
+		return "", err
+	}
+	return domain.StateSucceeded, nil
 }
 
-func (e *Engine) finalizeFailure(ctx context.Context, job *domain.Job, attempt int, execErr error) error {
+func (e *Engine) finalizeFailure(ctx context.Context, job *domain.Job, attempt int, execErr error) (string, error) {
 	reason := execErr.Error()
 	if errors.Is(execErr, context.Canceled) || errors.Is(execErr, context.DeadlineExceeded) {
-		return e.storage.ApplyState(ctx, job.ID, domain.StateProcessing, &domain.JobState{
+		if err := e.storage.ApplyState(ctx, job.ID, domain.StateProcessing, &domain.JobState{
 			Name:   domain.StateCancelled,
 			Reason: reason,
-		})
+		}); err != nil {
+			return "", err
+		}
+		return domain.StateCancelled, nil
 	}
 
 	if err := e.storage.ApplyState(ctx, job.ID, domain.StateProcessing, &domain.JobState{
@@ -224,19 +236,25 @@ func (e *Engine) finalizeFailure(ctx context.Context, job *domain.Job, attempt i
 		Reason: reason,
 		Data:   map[string]string{"attempt": fmt.Sprintf("%d", attempt+1)},
 	}); err != nil {
-		return err
+		return "", err
 	}
 
 	max := effectiveRetryMax(job.RetryMax)
 	if attempt+1 >= max {
-		return e.storage.ApplyState(ctx, job.ID, domain.StateFailed, &domain.JobState{
+		if err := e.storage.ApplyState(ctx, job.ID, domain.StateFailed, &domain.JobState{
 			Name:   domain.StateDead,
 			Reason: "retry exhausted",
-		})
+		}); err != nil {
+			return "", err
+		}
+		return domain.StateDead, nil
 	}
 
 	at := time.Now().Add(RetryDelay(attempt))
-	return e.storage.ScheduleRetry(ctx, job.ID, at)
+	if err := e.storage.ScheduleRetry(ctx, job.ID, at); err != nil {
+		return "", err
+	}
+	return "", nil
 }
 
 func isQueueEmpty(err error) bool {

@@ -7,16 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **Engine (Band 3 / v0.4.0)**: `internal/engine/` — worker pool, middleware pipeline, panic recovery, per-job timeout + heartbeat, retry with backoff, cancel in-flight (B3-009), queue concurrency caps (B3-010), result capture (B3-011), Dead/DLQ state (B3-012).
-- **`internal/handler/`** — subprocess runner (SIGTERM on cancel) + `handler.Func` for tests.
-- **`internal/middleware/`** — `JobContext`, `Pipeline`, `PanicRecovery`.
-- Storage: `ScheduleRetry`, `SetJobResult`; PG migration `002_job_result`; `Job.Result` field.
-
 ### Planned
 
-- **Pipelines (DAG)** — Band 8 / v1.1.0: declarative YAML, `needs` joins, `fan_out`, `on_all_success` barriers. SPEC §12 + ROADMAP Band 8.
+- **Pipelines (DAG)** — Band 8 / v1.1.0
+- Recurring cron API, bulk enqueue, OpenAPI, Prometheus `/metrics`
+
+## [0.6.0] - 2026-07-11
+
+First **usable preview**: run the daemon, enqueue with curl, inspect with CLI.
+
+### Added
+
+- **Band 4 (partial):** continuations on terminal state, coordinator orphan recovery, job cleanup loop, scheduled retry promotion (engine).
+- **Band 5 (core):** `internal/api` — enqueue, schedule, get/list jobs, requeue, cancel, continue, queues, servers, healthz/readyz, optional Bearer auth.
+- **Band 6 (core):** Cobra CLI — `gfire server`, `gfire job list|get|requeue`; `internal/config` + `gfire.example.yaml`.
+- **`internal/app`:** SIGINT/SIGTERM graceful shutdown for engine + HTTP.
+
+### Notes
+
+- Default in-memory backend; PostgreSQL/Redis via config. Run `make migrate-up` for PG (migration `002_job_result`).
+- Not tagged as production-ready; v1.0.0 remains Band 7 polish.
+
+## [0.4.0] - 2026-07-11
+
+Band 3 — engine (workers, retry, cancel, DLQ, result capture). See git history; pre-0.6.0 develop releases were not always tagged.
+
+### Added
+
+- **Engine (Band 3):** worker pool, middleware, subprocess handlers, integration tests.
+
 ## [0.3.0] - 2026-07-09
 
 Band 2 milestone — Redis and ValKey storage backends work.

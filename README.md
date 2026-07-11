@@ -4,7 +4,7 @@
 
 **🔥** _Language-agnostic job orchestration over HTTP — PostgreSQL, Redis, or ValKey_
 
-[![Version](https://img.shields.io/badge/version-0.4.0-blue)](./VERSION)
+[![Version](https://img.shields.io/badge/version-0.6.0-blue)](./VERSION)
 [![Go](https://img.shields.io/badge/Go-1.26.5-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Status](https://img.shields.io/badge/status-early%20development-orange)](#early-development--not-for-production)
@@ -18,7 +18,7 @@
 
 GFire is a **headless background job service**: a standalone Go binary that runs a worker pool and (soon) a REST API. Applications enqueue work over HTTP — they never import GFire as a library. Workers spawn external handler processes (`cmd`) against shared storage (**PostgreSQL**, **Redis**, or **ValKey**).
 
-> **Early development (v0.4.0 — Band 3).** Storage + **worker engine** work (in-memory tests). There is **no** production-ready REST API or CLI beyond `gfire version`. **Do not use in production.**
+> **Early development (v0.6.0 — usable preview).** Run `gfire server`, enqueue via **curl**, inspect with CLI. Not production-hardened — see [ROADMAP.md](ROADMAP.md).
 
 ## Table of contents
 
@@ -39,27 +39,27 @@ GFire is a **headless background job service**: a standalone Go binary that runs
 
 ## Early development — not for production
 
-**GFire is in a very early pre-release stage (v0.4.0 — Band 3 engine).**
+**GFire is in pre-release (v0.6.0 — first usable preview).**
 
-- APIs, storage schema, and behavior **will change** without notice.
-- There is **no** stable release, **no** REST API, and **no** CLI beyond a stub binary (`gfire version`). The **engine** runs jobs against storage in tests; wiring into `gfire server` is Band 6.
-- **Do not use in production.** No support, no SLA, no security audit.
+- **`gfire server`** runs engine + REST API (memory/PostgreSQL/Redis backends).
+- Enqueue and inspect jobs with **curl** or **`gfire job`** — no Go client required.
+- Recurring cron, bulk enqueue, OpenAPI, and Prometheus metrics are **not** in this release yet.
+- **Do not use in production** without your own hardening.
 
 Check [ROADMAP.md](ROADMAP.md) for what is planned and what is done.
 
 [↑ Back to top](#readme-top)
 
-## Current status (Band 3 / v0.4.0)
+## Current status (v0.6.0 — usable preview)
 
 | Component | Status |
 |-----------|--------|
-| Core types (`internal/job`) | ✅ |
-| `Storage` interface | ✅ |
-| In-memory backend + tests | ✅ |
-| PostgreSQL backend | ✅ `SKIP LOCKED` + migrations + integration tests |
-| Redis / ValKey backend | ✅ `BRPOP` + Lua scripts + integration tests (shared impl) |
-| Engine (workers) | ✅ worker pool, retry, cancel, DLQ, result capture |
-| REST API / CLI | ⬜ stub (`gfire version` only) |
+| Storage (memory, PG, Redis/ValKey) | ✅ |
+| Engine (workers, retry, cancel, DLQ) | ✅ |
+| Continuations + orphan recovery | ✅ |
+| REST API (enqueue, schedule, list, cancel, continue) | ✅ core |
+| CLI (`gfire server`, `gfire job list/get/requeue`) | ✅ core |
+| Recurring cron, bulk enqueue, OpenAPI, `/metrics` | ⬜ next bands |
 
 [↑ Back to top](#readme-top)
 
@@ -114,8 +114,32 @@ make version  # build and print version metadata
 
 Binary output: `bin/gfire`.
 
+### Quick start (in-memory)
+
 ```sh
 make build
+cp gfire.example.yaml gfire.yaml   # optional; defaults work without a file
+./bin/gfire server --config gfire.yaml
+```
+
+Enqueue a job:
+
+```sh
+curl -sS -X POST http://127.0.0.1:8080/v1/jobs/enqueue \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"echo","args":{"hello":"world"},"queue":"default"}'
+```
+
+List jobs:
+
+```sh
+./bin/gfire job list --config gfire.yaml
+curl -sS 'http://127.0.0.1:8080/v1/jobs?limit=10'
+```
+
+PostgreSQL: set `storage.backend: postgres` in `gfire.yaml`, run `make db-up && make migrate-up` (includes migration `002` for job results).
+
+```sh
 ./bin/gfire version
 ```
 
