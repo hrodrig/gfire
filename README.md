@@ -4,7 +4,7 @@
 
 **🔥** _Language-agnostic job orchestration over HTTP — PostgreSQL, Redis, or ValKey_
 
-[![Version](https://img.shields.io/badge/version-0.6.0-blue)](./VERSION)
+[![Version](https://img.shields.io/badge/version-0.6.1-blue)](./VERSION)
 [![Go](https://img.shields.io/badge/Go-1.26.5-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Status](https://img.shields.io/badge/status-early%20development-orange)](#early-development--not-for-production)

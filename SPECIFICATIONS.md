@@ -411,7 +411,7 @@ Optional Bearer token when `auth.enabled: true`. Off by default (local/dev, priv
 Authorization: Bearer <auth.token>
 ```
 
-Unauthenticated requests to protected routes return `401`. When disabled, all `/v1/*` routes are open — do not expose `:8080` on the public internet without TLS + auth.
+Unauthenticated requests to protected routes return `401`. Token comparison uses constant-time equality (`crypto/subtle`) when auth is enabled (**B7-001**). When disabled, all `/v1/*` routes are open — do not expose `:8080` on the public internet without TLS + auth.
 
 **Implemented:** v0.6.0 (`B5-012`).
 
@@ -1029,8 +1029,9 @@ func (w *worker) run(ctx context.Context) {
 2. Stop accepting new jobs (cancel background goroutines)
 3. Drain in-flight workers (wait up to `ShutdownTimeout`)
 4. For each in-flight job: complete if possible, otherwise re-queue
-5. Unregister server from registry
-6. Return from `Stop()`
+5. After dequeue, workers load job metadata with a detached context so a stopping engine does not leave jobs stuck in `Processing` waiting for orphan recovery (**B7-003**)
+6. Unregister server from registry
+7. Return from `Stop()`
 
 ---
 

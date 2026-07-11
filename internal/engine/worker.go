@@ -45,7 +45,8 @@ func (e *Engine) workerLoop(_ int) {
 }
 
 func (e *Engine) processTicket(ticket *domain.JobTicket) {
-	jw, err := e.storage.GetJob(e.runCtx, ticket.JobID)
+	// Detached ctx: ticket already dequeued; load job even when engine is stopping (B7-003).
+	jw, err := e.storage.GetJob(context.Background(), ticket.JobID)
 	if err != nil {
 		e.logger.Warn("get job failed", "job_id", ticket.JobID, "err", err)
 		return

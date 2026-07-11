@@ -16,6 +16,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - SPEC/ROADMAP sync post-Hermes audit: Storage 31 methods, Result B3-011 implemented, cancel/auth marked shipped, delete tracked as B5-014
 
+## [0.6.1] - 2026-07-11
+
+Band 7 audit hardening — security + shutdown fixes (MiniMax review).
+
+### Security
+
+- **B7-001:** Bearer token check used plain string equality, enabling timing side-channels when `auth.enabled` is on. Compare tokens with `crypto/subtle.ConstantTimeCompare` instead.
+
+### Fixed
+
+- **B7-002:** Engine `promoteScheduled` loop looked like it promoted jobs but only iterated tickets; storage already moves due scheduled jobs to Enqueued. Renamed to `tickScheduler` and documented that promotion lives in `Storage.GetDueScheduled`.
+- **B7-003:** During shutdown, workers called `GetJob` with the engine's canceled context after dequeue, so jobs could stay in `Processing` until orphan recovery (~5 min). Load dequeued jobs with a detached context so in-flight work can finish or fail cleanly.
+
 ## [0.6.0] - 2026-07-11
 
 First **usable preview**: run the daemon, enqueue with curl, inspect with CLI.
@@ -70,6 +83,8 @@ Band 1 milestone — PostgreSQL backend works.
 
 - No production-ready engine, REST API, or CLI beyond `gfire version`. Storage foundation only.
 
-[Unreleased]: https://github.com/hrodrig/gfire/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/hrodrig/gfire/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/hrodrig/gfire/compare/v0.6.0...v0.6.1
+[0.6.0]: https://github.com/hrodrig/gfire/compare/v0.4.0...v0.6.0
 [0.3.0]: https://github.com/hrodrig/gfire/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/hrodrig/gfire/releases/tag/v0.2.0

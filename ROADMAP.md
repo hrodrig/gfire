@@ -355,21 +355,29 @@ GET    /metrics                                                   → planned
 
 ## Band 7 — Release: Polish, Docker, Docs (Week 8)
 
-> Production readiness.
+> Production readiness. **MiniMax audit (July 2026): B7-001–006 use problem → fix wording.**
 
 
-| Deliverable                                                  | Est. effort |
-| ------------------------------------------------------------ | ----------- |
-| `Dockerfile` — Multi-stage build (tiny distroless image)     | 1 day       |
-| `gfire.example.yaml` — Documented example config             | 1 day       |
-| `README.md` — Quick start, curl examples, config reference   | 1 day       |
-| Observability: structured logging (slog), request IDs        | 1 day       |
-| End-to-end test: docker-compose → curl jobs → verify via CLI | 1 day       |
-| Helm chart for AKS deployment (optional)                     | 2 days      |
-| `v1.0.0` tag + release notes                                 | —           |
+| Deliverable | Est. effort | Status |
+| ----------- | ----------- | ------ |
+| **B7-001** Plain `!=` on Bearer token → timing side-channel when `auth.enabled` → `crypto/subtle.ConstantTimeCompare` (Band 5) | — | ✅ |
+| **B7-002** `promoteScheduled` loop looked like engine promoted jobs but did nothing → storage already promotes in `GetDueScheduled` → rename `tickScheduler` + document (Band 4) | — | ✅ |
+| **B7-003** Post-dequeue `GetJob` used canceled engine ctx on shutdown → jobs stuck in `Processing` until orphan recovery → detached ctx (Band 3) | — | ✅ |
+| **B7-004** All queues at concurrency limit → workers spin 100ms wakeups → exponential backoff or signal when a slot frees | 0.5 day | ⬜ |
+| **B7-005** Invalid config (e.g. unknown `storage.backend`) fails late at `OpenStorage` → validate in `Load()` and fail fast | 0.5 day | ⬜ |
+| **B7-006** `Requeue` ignores current state → can resurrect `Succeeded`/`Dead` jobs → reject or no-op on terminal states | 0.5 day | ⬜ |
+| `Dockerfile` — Multi-stage build (tiny distroless image) | 1 day | ⬜ |
+| `gfire.example.yaml` — Documented example config | 1 day | ⬜ |
+| `README.md` — Quick start, curl examples, config reference | 1 day | ⬜ |
+| Observability: structured logging (slog), request IDs | 1 day | ⬜ |
+| End-to-end test: docker-compose → curl jobs → verify via CLI | 1 day | ⬜ |
+| Helm chart for AKS deployment (optional) | 2 days | ⬜ |
+| `v1.0.0` tag + release notes | — | ⬜ |
 
 
 **🔑 v1.0.0** — "Production-ready. Deploy on AKS. Monitoring via Prometheus + Grafana + CLI."
+
+**Shipped v0.6.1** — B7-001–003: constant-time Bearer auth, scheduler tick clarity, shutdown GetJob fix (MiniMax audit).
 
 ---
 

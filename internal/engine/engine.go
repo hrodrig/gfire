@@ -178,23 +178,18 @@ func (e *Engine) schedulerLoop() {
 		case <-e.runCtx.Done():
 			return
 		case <-ticker.C:
-			e.promoteScheduled()
+			e.tickScheduler()
 		}
 	}
 }
 
-func (e *Engine) promoteScheduled() {
-	tickets, err := e.storage.GetDueScheduled(e.runCtx, time.Now(), e.cfg.SchedulerBatchSize)
-	if err != nil {
-		e.logger.Warn("scheduled poll failed", "err", err)
-		return
-	}
-	for range tickets {
-		select {
-		case <-e.runCtx.Done():
+// tickScheduler polls due scheduled jobs. Promotion to Enqueued happens inside Storage.GetDueScheduled.
+func (e *Engine) tickScheduler() {
+	if _, err := e.storage.GetDueScheduled(e.runCtx, time.Now(), e.cfg.SchedulerBatchSize); err != nil {
+		if errors.Is(err, context.Canceled) {
 			return
-		default:
 		}
+		e.logger.Warn("scheduled poll failed", "err", err)
 	}
 }
 
