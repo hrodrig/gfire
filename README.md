@@ -122,26 +122,45 @@ Binary output: `bin/gfire`.
 make server   # or: make build && ./bin/gfire server --config gfire.yaml
 ```
 
-Enqueue a job:
+**Note:** `GET /v1` returns **404** — there is no API root page. Use the routes below.
+
+**Health (k8s probes / smoke test):**
+
+```sh
+curl -sS http://127.0.0.1:8080/healthz   # → {"status":"ok"}
+curl -sS http://127.0.0.1:8080/readyz    # → storage reachable
+```
+
+**Enqueue a job:**
 
 ```sh
 curl -sS -X POST http://127.0.0.1:8080/v1/jobs/enqueue \
   -H 'Content-Type: application/json' \
   -d '{"name":"echo","args":{"hello":"world"},"queue":"default"}'
+# → {"job_id":"...","status":"enqueued","queue":"default"}
 ```
 
-List jobs:
+**Inspect jobs (CLI or curl):**
 
 ```sh
 ./bin/gfire job list --config gfire.yaml
 curl -sS 'http://127.0.0.1:8080/v1/jobs?limit=10'
+
+# replace JOB_ID from enqueue response:
+curl -sS http://127.0.0.1:8080/v1/jobs/JOB_ID
+./bin/gfire job get JOB_ID --config gfire.yaml
 ```
 
-PostgreSQL: set `storage.backend: postgres` in `gfire.yaml`, run `make db-up && make migrate-up` (includes migration `002` for job results).
+**Queues and servers:**
 
 ```sh
-./bin/gfire version
+curl -sS http://127.0.0.1:8080/v1/queues
+curl -sS http://127.0.0.1:8080/v1/servers
 ```
+
+Full route list: [SPECIFICATIONS.md §3](SPECIFICATIONS.md#3-rest-api-http) · config: `gfire.example.yaml`
+
+PostgreSQL: set `storage.backend: postgres` in `gfire.yaml`, run `make db-up && make migrate-up` (includes migration `002` for job results).
 
 [↑ Back to top](#readme-top)
 
@@ -175,7 +194,7 @@ Default Redis: `localhost:6379`. ValKey (same API): `GFIRE_REDIS_ADDR=localhost:
 | Axis | GFire | Asynq | River |
 |------|-------|-------|-------|
 | Model | Standalone service | Go library | Go library |
-| Enqueue | HTTP / curl (`WIP`) | Go API | Go API |
+| Enqueue | HTTP / curl ✅ v0.6.0 | Go API | Go API |
 | Storage | PG + Redis/ValKey `shipped` | Redis | PostgreSQL |
 | Handlers | External `cmd` (`planned`) | In-process | In-process |
 | HA | N peers, no Raft (`planned`) | Redis | PG `SKIP LOCKED` |
