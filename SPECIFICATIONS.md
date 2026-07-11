@@ -427,13 +427,14 @@ Unauthenticated requests to protected routes return `401`. When disabled, all `/
 
 ```go
 type Job struct {
-    ID        string   // UUIDv7 — time-sortable
-    Name      string   // logical name for the handler
-    Args      []byte   // serialized (JSON by default)
-    Queue     string   // queue name
+    ID        string        // UUIDv7 — time-sortable
+    Name      string        // logical name for the handler
+    Args      []byte        // serialized (JSON by default)
+    Queue     string        // queue name
     CreatedAt time.Time
-    RetryMax  int      // per-job override of default retry count
-    Result    []byte   // handler stdout JSON (optional, cap 64KB) — planned B3-011
+    RetryMax  int           // per-job override of default retry count
+    Timeout   time.Duration // max handler runtime; 0 = server.default_timeout
+    Result    []byte        // handler stdout JSON (optional, cap 64KB) — planned B3-011
 }
 ```
 
@@ -535,7 +536,7 @@ type JobWithStates struct {
 
 
 
-## 4. Storage Interface
+## 5. Storage Interface
 
 The `Storage` interface is **the** abstraction. Every backend implements it.
 
@@ -564,10 +565,18 @@ type Storage interface {
     // Returns ErrStateConflict if the job is not in expectedCurrent.
     ApplyState(ctx context.Context, jobID string, expectedCurrent string, newState *JobState) error
 
+    // HeartbeatJob updates last_progress for a Processing job (long-running work).
+    // Workers call this every ~60s so orphan recovery does not re-queue active jobs.
+    HeartbeatJob(ctx context.Context, jobID string) error
+
+    // GetOrphanedJobs returns Processing jobs whose progress heartbeat is older than staleAge.
+    // Coordinator uses this when a worker dies mid-job.
+    GetOrphanedJobs(ctx context.Context, staleAge time.Duration) ([]*JobTicket, error)
+
     // GetJob retrieves a job with its full state history.
     GetJob(ctx context.Context, jobID string) (*JobWithStates, error)
 
-    // GetJobByState retrieves jobs in a given state (pagination, for recovery).
+    // GetJobsByState retrieves jobs in a given state (pagination, for recovery).
     GetJobsByState(ctx context.Context, state string, offset, limit int) ([]*JobWithStates, error)
 
     // ──────────────────────────────────────────────
@@ -655,9 +664,9 @@ Both serve the same logical operations. Redis/ValKey use list/sorted-set/set pri
 
 
 
-## 5. Redis / ValKey Storage
+## 6. Redis / ValKey Storage
 
-Redist and ValKey are **API-compatible** (as of 2025). They share the same driver (`rueidis` or `go-redis/v9`) and implementation module. The only difference is the connection address.
+Redis and ValKey are **API-compatible** (as of 2025). They share the same driver (`go-redis/v9` in v1) and implementation module. The only difference is the connection address.
 
 ### Data model
 
@@ -699,25 +708,24 @@ Redist and ValKey are **API-compatible** (as of 2025). They share the same drive
 
 
 
-### Driver choice: `rueidis` (recommended) vs `go-redis/v9`
+### Driver choice — **DECIDED: `go-redis/v9` (v1)**
 
+Band 2 ships `internal/storage/redis/` on **`github.com/redis/go-redis/v9`**. ValKey uses the same client (wire-compatible).
 
-|                         | rueidis              | go-redis          |
-| ----------------------- | -------------------- | ----------------- |
-| **Client-side caching** | Built-in (RESP3)     | Manual            |
-| **Pipeline**            | Implicit via DoCache | Explicit Pipeline |
-| **Performance**         | Higher throughput    | Good              |
-| **Lua scripting**       | Yes                  | Yes               |
-| **Sentinel / Cluster**  | Yes                  | Yes               |
+|                         | go-redis (v1)        | rueidis (deferred)   |
+| ----------------------- | -------------------- | -------------------- |
+| **Status**              | Implemented (v0.3.0) | Post-v1 perf revisit |
+| **Lua scripting**       | Yes                  | Yes                  |
+| **Sentinel / Cluster**  | Yes                  | Yes                  |
+| **Client-side caching** | Manual               | Built-in (RESP3)     |
 
-
-**Recommendation:** `rueidis` for production, `go-redis/v9` for simplicity if preferred. The storage implementation should be driver-agnostic at the interface level (wrap driver calls in internal adapter).
+**Decision:** go-redis/v9 for v1 — simpler, well-known, sufficient for job-queue throughput. Revisit rueidis if Redis becomes a bottleneck (unlikely before high fan-out).
 
 ---
 
 
 
-## 6. PostgreSQL Storage
+## 7. PostgreSQL Storage
 
 
 
@@ -882,7 +890,7 @@ Workers listen on `gfire:jobs` and wake up their fetch loop instead of polling.
 
 
 
-## 7. Server & Worker Pool
+## 8. Server & Worker Pool
 
 
 
@@ -1021,7 +1029,7 @@ func (w *worker) run(ctx context.Context) {
 
 
 
-## 8. Recurring Jobs (Cron)
+## 9. Recurring Jobs (Cron)
 
 
 
@@ -1060,7 +1068,7 @@ Prevents duplicate execution in multi-node deployments. Only the node holding th
 
 
 
-## 9. Delayed & Scheduled Jobs
+## 10. Delayed & Scheduled Jobs
 
 
 
@@ -1095,7 +1103,7 @@ The `enqueue_at` field supports ISO 8601 (absolute time). For relative delays, t
 
 
 
-## 10. Job Continuations (Chaining)
+## 11. Job Continuations (Chaining)
 
 
 
@@ -1418,6 +1426,13 @@ Jobs can specify `RetryMax` at enqueue time. 0 = no retries, -1 = infinite, N = 
 
 ### Orphan recovery (`Coordinator` goroutine)
 
+Two mechanisms (server-level and job-level):
+
+1. **Server stale:** every `HeartbeatTimeout / 2`, query `GetServers()`. If `now - last_heartbeat > HeartbeatTimeout` → mark server stale. After `OrphanTimeout`, re-queue all `Processing` jobs for that `server_id` via `Requeue`.
+2. **Job progress stale (long jobs):** workers call `HeartbeatJob(jobID)` every ~60s while a job runs. Coordinator calls `GetOrphanedJobs(staleAge)` to find `Processing` jobs with no recent progress and re-queue them (covers worker crash without waiting for full server orphan timeout).
+
+Steps for server orphan path:
+
 1. Every `HeartbeatTimeout / 2`: query `GetServers()`
 2. If `now - last_heartbeat > HeartbeatTimeout` → mark server as "stale"
 3. If server is stale for > `OrphanTimeout`:
@@ -1573,7 +1588,7 @@ gfire/
 | `spf13/viper`                               | Config loading (YAML + env vars + CLI flags)                |
 | `google/uuid`                               | UUIDv7 job IDs                                              |
 | `robfig/cron/v3`                            | Cron scheduling for recurring jobs                          |
-| `rueidis` or `go-redis/v9`                  | Redis/ValKey driver                                         |
+| `go-redis/v9`                               | Redis/ValKey driver (v1 — rueidis deferred)                 |
 | `jackc/pgx/v5`                              | PostgreSQL driver                                           |
 | `golang-migrate/migrate` or `pressly/goose` | PG schema migrations                                        |
 | `prometheus/client_golang`                  | Prometheus `/metrics`                                       |

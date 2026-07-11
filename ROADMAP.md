@@ -125,7 +125,7 @@ GFire uses **shared-state coordination**, not leader election. All nodes are pee
 | Deliverable                                                                 | Status |
 | --------------------------------------------------------------------------- | ------ |
 | `internal/job/` — Job, JobState, ServerInfo, Lock, JobTicket, continuations | ✅      |
-| `internal/storage/storage.go` — Full interface (20 methods)                 | ✅      |
+| `internal/storage/storage.go` — Full interface (29 methods)                 | ✅      |
 | `internal/storage/errors/` — Sentinel errors                                | ✅      |
 | `internal/storage/memory/` — Thread-safe in-memory backend                  | ✅      |
 | `internal/storage/memory/memory_test.go` — 13 tests, all passing            | ✅      |
@@ -426,6 +426,11 @@ queue_limits:                # B3-010 — per-queue concurrency caps
   critical: 2                # 0 = no cap beyond server.workers
   default: 0
   low: 0
+
+# Handler registry — see SPECIFICATIONS.md §8
+handlers:
+  - name: send_email
+    cmd: /usr/local/bin/send-email
 ```
 
 **No embedded UI.** GFire v1 is a headless service. Monitoring options:

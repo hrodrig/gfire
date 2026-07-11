@@ -46,14 +46,18 @@ const (
 	StateScheduled  = "Scheduled"
 	StateDeleted    = "Deleted"
 	StateAwaiting   = "Awaiting"
+	StateDead       = "Dead"       // poison / DLQ — Band 3 (B3-012)
+	StateCancelled  = "Cancelled"  // operator cancel — Band 3 (B3-009)
 )
 
 // TerminalStates returns true if the state is terminal
 // (no more transitions expected except manual intervention or cleanup).
 var TerminalStates = map[string]bool{
-	StateSucceeded: true,
-	StateFailed:    true,
-	StateDeleted:   true,
+	StateSucceeded:  true,
+	StateFailed:     true,
+	StateDeleted:    true,
+	StateDead:       true,
+	StateCancelled:  true,
 }
 
 // ServerInfo represents a GFire node registered in the cluster.
