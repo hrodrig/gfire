@@ -88,6 +88,8 @@ func (e *Engine) Start(ctx context.Context) error {
 			e.wg.Add(1)
 			go e.cleanupLoop()
 		}
+		e.wg.Add(1)
+		go e.recurringLoop()
 		e.logger.Info("engine started", "server_id", e.cfg.ServerID, "workers", e.cfg.Workers)
 	})
 	return startErr

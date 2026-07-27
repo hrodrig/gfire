@@ -281,11 +281,11 @@ Engine.Stop():
 | `engine/coordinator.go` — server heartbeat + orphan job requeue              | ✅      |
 | `engine/continuations.go` — fire child jobs + parent result merge            | ✅      |
 | `engine/coordinator.go` — cleanup via `RemoveExpired`                        | ✅      |
-| `recurring.go` — RecurringManager (robfig/cron + distributed lock)         | ⬜      |
+| `recurring.go` — RecurringManager (robfig/cron + distributed lock) | ✅ |
 | Stale server registry sweep (full orphan server path)                        | ⬜      |
 
 
-**🔑 v0.5.0** — "Recurring cron + full coordinator." (remaining Band 4)
+**🔑 v0.5.0** — "Recurring cron + full coordinator." ✅ (cron done; stale sweep deferred)
 
 ---
 
