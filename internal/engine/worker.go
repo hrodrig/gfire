@@ -20,12 +20,23 @@ func (e *Engine) workerLoop(_ int) {
 		}
 		queues := e.queuesUnderLimit()
 		if len(queues) == 0 {
-			select {
-			case <-e.runCtx.Done():
-				return
-			case <-time.After(100 * time.Millisecond):
-				continue
+			// B7-004: exponential backoff when all queues are at concurrency limit.
+			backoff := 100 * time.Millisecond
+			for {
+				select {
+				case <-e.runCtx.Done():
+					return
+				case <-time.After(backoff):
+				}
+				if len(e.queuesUnderLimit()) > 0 {
+					break
+				}
+				backoff *= 2
+				if backoff > 2*time.Second {
+					backoff = 2 * time.Second
+				}
 			}
+			continue
 		}
 
 		ticket, err := e.storage.Dequeue(e.runCtx, queues, e.cfg.DequeueTimeout)

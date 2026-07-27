@@ -177,6 +177,15 @@ func (s *Storage) Requeue(ctx context.Context, jobID string, reason string) erro
 		return serrors.ErrNotFound
 	}
 
+	// B7-006: reject Requeue on terminal states.
+	currentState, err := s.client.HGet(ctx, jobKey(jobID), "state").Result()
+	if err != nil {
+		return fmt.Errorf("requeue hget state: %w", err)
+	}
+	if domain.IrreversibleStates[currentState] {
+		return serrors.ErrTerminalState
+	}
+
 	fields, err := s.client.HGetAll(ctx, jobKey(jobID)).Result()
 	if err != nil {
 		return fmt.Errorf("requeue hgetall: %w", err)
@@ -398,4 +407,42 @@ func (s *Storage) loadStates(ctx context.Context, jobID string) ([]*domain.JobSt
 		states = append(states, st)
 	}
 	return states, nil
+}
+
+// DeleteJob marks a job as Deleted (soft-delete, B5-014).
+func (s *Storage) DeleteJob(ctx context.Context, jobID string) error {
+	exists, err := s.client.Exists(ctx, jobKey(jobID)).Result()
+	if err != nil {
+		return fmt.Errorf("delete exists: %w", err)
+	}
+	if exists == 0 {
+		return serrors.ErrNotFound
+	}
+
+	currentState, err := s.client.HGet(ctx, jobKey(jobID), "state").Result()
+	if err != nil {
+		return fmt.Errorf("delete hget: %w", err)
+	}
+	if domain.IrreversibleStates[currentState] {
+		return serrors.ErrTerminalState
+	}
+
+	now := time.Now().UTC()
+	st := &domain.JobState{Name: domain.StateDeleted, CreatedAt: now}
+	stateJSON, err := marshalState(st)
+	if err != nil {
+		return err
+	}
+
+	pipe := s.client.Pipeline()
+	pipe.HSet(ctx, jobKey(jobID), map[string]string{
+		"state":      domain.StateDeleted,
+		"updated_at": now.Format(time.RFC3339Nano),
+	})
+	pipe.HDel(ctx, jobKey(jobID), "progress_at")
+	pipe.RPush(ctx, jobStatesKey(jobID), stateJSON)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("delete pipeline: %w", err)
+	}
+	return nil
 }

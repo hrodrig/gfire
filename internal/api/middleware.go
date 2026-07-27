@@ -1,10 +1,25 @@
 package api
 
 import (
+	"context"
 	"crypto/subtle"
 	"net/http"
 	"strings"
 )
+
+// contextKey is an unexported type for context keys.
+type contextKey string
+
+// RequestIDKey is the context key for the request ID.
+const RequestIDKey contextKey = "request_id"
+
+// GetRequestID extracts the request ID from the context.
+func GetRequestID(ctx context.Context) string {
+	if id, ok := ctx.Value(RequestIDKey).(string); ok {
+		return id
+	}
+	return ""
+}
 
 func maxBody(max int64, next http.Handler) http.Handler {
 	if max <= 0 {

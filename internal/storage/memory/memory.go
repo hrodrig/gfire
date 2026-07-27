@@ -152,6 +152,15 @@ func (s *Storage) Requeue(ctx context.Context, jobID string, reason string) erro
 		return serrors.ErrNotFound
 	}
 
+	// B7-006: reject Requeue on terminal states.
+	states := s.jobStates[jobID]
+	if len(states) > 0 {
+		current := states[len(states)-1].Name
+		if domain.IrreversibleStates[current] {
+			return serrors.ErrTerminalState
+		}
+	}
+
 	delete(s.processing, jobID)
 	s.jobStates[jobID] = append(s.jobStates[jobID], &domain.JobState{
 		Name:   domain.StateEnqueued,
@@ -621,6 +630,29 @@ func isTerminal(state string) bool {
 	return state == domain.StateSucceeded ||
 		state == domain.StateFailed ||
 		state == domain.StateDeleted
+}
+
+// DeleteJob marks a job as Deleted (soft-delete, B5-014).
+func (s *Storage) DeleteJob(ctx context.Context, jobID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	states, ok := s.jobStates[jobID]
+	if !ok {
+		return serrors.ErrNotFound
+	}
+	current := states[len(states)-1].Name
+	if domain.IrreversibleStates[current] {
+		return serrors.ErrTerminalState
+	}
+
+	s.jobStates[jobID] = append(states, &domain.JobState{
+		Name:      domain.StateDeleted,
+		CreatedAt: time.Now(),
+	})
+	delete(s.processing, jobID)
+	delete(s.progress, jobID)
+	return nil
 }
 
 func (s *Storage) Close() error { return nil }

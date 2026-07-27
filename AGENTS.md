@@ -14,7 +14,7 @@ This file tells AI agents (Cline, Claude Code, Copilot, etc.) how to work with t
 ### Go
 - No unused imports or variables (enforced by `go vet`)
 - `gocyclo` cyclomatic complexity ≤ 15 per function
-- Test coverage ≥ 80% on all packages (enforced by `go test -cover`)
+- Test coverage >= 80% on the memory storage backend (enforced by `make cover`)
 - `gofmt` / `gofumpt` formatting
 - No `init()` functions outside of migration or config registration
 - Use `context.Context` as first parameter for all public functions

@@ -158,4 +158,8 @@ type Storage interface {
 
 	// SetJobResult stores handler stdout (JSON) on the job record before Succeeded.
 	SetJobResult(ctx context.Context, jobID string, result []byte) error
+
+	// DeleteJob marks a job as Deleted (soft-delete). Returns ErrNotFound if the job
+	// doesn't exist, or ErrTerminalState if already in an irreversible state.
+	DeleteJob(ctx context.Context, jobID string) error
 }

@@ -18,106 +18,106 @@ func TestStorage_EnqueueDequeueSucceed(t *testing.T) {
 	ctx := context.Background()
 	s := memory.New()
 
-	// ── Enqueue ────────────────────────────────────────────
+	var jobID string
 	job := &domain.Job{
 		Name:  "test_job",
 		Args:  []byte(`{"key":"value"}`),
 		Queue: "default",
 	}
 
-	jobID, err := s.Enqueue(ctx, "default", job)
-	if err != nil {
-		t.Fatalf("Enqueue: %v", err)
-	}
-	if jobID == "" {
-		t.Fatal("Enqueue returned empty job ID")
-	}
-
-	// Verify queue length
-	length, err := s.GetQueueLength(ctx, "default")
-	if err != nil {
-		t.Fatalf("GetQueueLength: %v", err)
-	}
-	if length != 1 {
-		t.Fatalf("expected queue length 1, got %d", length)
-	}
-
-	// ── Dequeue ────────────────────────────────────────────
-	ticket, err := s.Dequeue(ctx, []string{"default"}, 2*time.Second)
-	if err != nil {
-		t.Fatalf("Dequeue: %v", err)
-	}
-	if ticket.JobID != jobID {
-		t.Fatalf("expected jobID %s, got %s", jobID, ticket.JobID)
-	}
-	if ticket.Token == "" {
-		t.Fatal("Dequeue returned empty token")
-	}
-
-	// Queue should now be empty
-	length, _ = s.GetQueueLength(ctx, "default")
-	if length != 0 {
-		t.Fatalf("expected queue length 0 after dequeue, got %d", length)
-	}
-
-	// ── Verify state is Processing ─────────────────────────
-	js, err := s.GetJob(ctx, jobID)
-	if err != nil {
-		t.Fatalf("GetJob: %v", err)
-	}
-	if js.CurrentState() != domain.StateProcessing {
-		t.Fatalf("expected state Processing, got %s", js.CurrentState())
-	}
-	if len(js.States) != 2 {
-		t.Fatalf("expected 2 state entries (Enqueued + Processing), got %d", len(js.States))
-	}
-	if js.States[1].Data["server_id"] != "local" {
-		t.Fatalf("expected Processing server_id=local, got %v", js.States[1].Data)
-	}
-
-	// ── Apply Succeeded ────────────────────────────────────
-	err = s.ApplyState(ctx, jobID, domain.StateProcessing, &domain.JobState{
-		Name: domain.StateSucceeded,
-		Data: map[string]string{"duration_ms": "42"},
-	})
-	if err != nil {
-		t.Fatalf("ApplyState(Succeeded): %v", err)
-	}
-
-	// ── Verify final state ─────────────────────────────────
-	js, err = s.GetJob(ctx, jobID)
-	if err != nil {
-		t.Fatalf("GetJob: %v", err)
-	}
-	if js.CurrentState() != domain.StateSucceeded {
-		t.Fatalf("expected state Succeeded, got %s", js.CurrentState())
-	}
-	if len(js.States) != 3 {
-		t.Fatalf("expected 3 state entries, got %d", len(js.States))
-	}
-
-	// Verify state names in order
-	expectedStates := []string{domain.StateEnqueued, domain.StateProcessing, domain.StateSucceeded}
-	for i, st := range js.States {
-		if st.Name != expectedStates[i] {
-			t.Fatalf("state[%d]: expected %s, got %s", i, expectedStates[i], st.Name)
+	t.Run("Enqueue", func(t *testing.T) {
+		var err error
+		jobID, err = s.Enqueue(ctx, "default", job)
+		if err != nil {
+			t.Fatalf("Enqueue: %v", err)
 		}
-	}
+		if jobID == "" {
+			t.Fatal("Enqueue returned empty job ID")
+		}
+		length, err := s.GetQueueLength(ctx, "default")
+		if err != nil {
+			t.Fatalf("GetQueueLength: %v", err)
+		}
+		if length != 1 {
+			t.Fatalf("expected queue length 1, got %d", length)
+		}
+	})
 
-	// Verify job data is intact
-	if js.Job.Name != "test_job" {
-		t.Fatalf("expected job name test_job, got %s", js.Job.Name)
-	}
+	t.Run("Dequeue", func(t *testing.T) {
+		ticket, err := s.Dequeue(ctx, []string{"default"}, 2*time.Second)
+		if err != nil {
+			t.Fatalf("Dequeue: %v", err)
+		}
+		if ticket.JobID != jobID {
+			t.Fatalf("expected jobID %s, got %s", jobID, ticket.JobID)
+		}
+		if ticket.Token == "" {
+			t.Fatal("Dequeue returned empty token")
+		}
+		length, _ := s.GetQueueLength(ctx, "default")
+		if length != 0 {
+			t.Fatalf("expected queue length 0 after dequeue, got %d", length)
+		}
+	})
 
-	// ── Verify counters ────────────────────────────────────
-	enqueued, _ := s.GetCounter(ctx, "enqueued")
-	if enqueued != 1 {
-		t.Fatalf("expected enqueued=1, got %d", enqueued)
-	}
-	succeeded, _ := s.GetCounter(ctx, "succeeded")
-	if succeeded != 1 {
-		t.Fatalf("expected succeeded=1, got %d", succeeded)
-	}
+	t.Run("ProcessingState", func(t *testing.T) {
+		js, err := s.GetJob(ctx, jobID)
+		if err != nil {
+			t.Fatalf("GetJob: %v", err)
+		}
+		if js.CurrentState() != domain.StateProcessing {
+			t.Fatalf("expected state Processing, got %s", js.CurrentState())
+		}
+		if len(js.States) != 2 {
+			t.Fatalf("expected 2 state entries (Enqueued + Processing), got %d", len(js.States))
+		}
+		if js.States[1].Data["server_id"] != "local" {
+			t.Fatalf("expected Processing server_id=local, got %v", js.States[1].Data)
+		}
+	})
+
+	t.Run("ApplySucceeded", func(t *testing.T) {
+		err := s.ApplyState(ctx, jobID, domain.StateProcessing, &domain.JobState{
+			Name: domain.StateSucceeded,
+			Data: map[string]string{"duration_ms": "42"},
+		})
+		if err != nil {
+			t.Fatalf("ApplyState(Succeeded): %v", err)
+		}
+	})
+
+	t.Run("FinalState", func(t *testing.T) {
+		js, err := s.GetJob(ctx, jobID)
+		if err != nil {
+			t.Fatalf("GetJob: %v", err)
+		}
+		if js.CurrentState() != domain.StateSucceeded {
+			t.Fatalf("expected state Succeeded, got %s", js.CurrentState())
+		}
+		if len(js.States) != 3 {
+			t.Fatalf("expected 3 state entries, got %d", len(js.States))
+		}
+		expectedStates := []string{domain.StateEnqueued, domain.StateProcessing, domain.StateSucceeded}
+		for i, st := range js.States {
+			if st.Name != expectedStates[i] {
+				t.Fatalf("state[%d]: expected %s, got %s", i, expectedStates[i], st.Name)
+			}
+		}
+		if js.Job.Name != "test_job" {
+			t.Fatalf("expected job name test_job, got %s", js.Job.Name)
+		}
+	})
+
+	t.Run("VerifyCounters", func(t *testing.T) {
+		enqueued, _ := s.GetCounter(ctx, "enqueued")
+		if enqueued != 1 {
+			t.Fatalf("expected enqueued=1, got %d", enqueued)
+		}
+		succeeded, _ := s.GetCounter(ctx, "succeeded")
+		if succeeded != 1 {
+			t.Fatalf("expected succeeded=1, got %d", succeeded)
+		}
+	})
 }
 
 // TestStorage_StateConflict verifies that ApplyState rejects
@@ -181,6 +181,88 @@ func TestStorage_Requeue(t *testing.T) {
 	if ticket.JobID != jobID {
 		t.Fatalf("expected jobID %s, got %s", jobID, ticket.JobID)
 	}
+}
+
+// TestStorage_RequeueTerminalState verifies that Requeue on a
+// terminal state (Succeeded, Dead, Cancelled, Deleted) returns
+// ErrTerminalState, while Failed jobs can be requeued (manual retry).
+func TestStorage_RequeueTerminalState(t *testing.T) {
+	ctx := context.Background()
+	s := memory.New()
+
+	terminalStates := []string{
+		domain.StateSucceeded,
+		domain.StateDead,
+		domain.StateCancelled,
+		domain.StateDeleted,
+	}
+	for _, terminal := range terminalStates {
+		jobID, _ := s.Enqueue(ctx, "default", &domain.Job{Name: "term_test"})
+		_, _ = s.Dequeue(ctx, []string{"default"}, 2*time.Second)
+		s.ApplyState(ctx, jobID, domain.StateProcessing, &domain.JobState{
+			Name: terminal,
+		})
+
+		err := s.Requeue(ctx, jobID, "manual retry")
+		if err == nil {
+			t.Errorf("Requeue on %s should return ErrTerminalState, got nil", terminal)
+		}
+	}
+}
+
+// TestStorage_DeleteJob verifies soft-delete and terminal-state rejection (B5-014).
+func TestStorage_DeleteJob(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("deletes enqueued job", func(t *testing.T) {
+		s := memory.New()
+		jobID, _ := s.Enqueue(ctx, "default", &domain.Job{Name: "del_test"})
+		if err := s.DeleteJob(ctx, jobID); err != nil {
+			t.Fatalf("DeleteJob: %v", err)
+		}
+		js, _ := s.GetJob(ctx, jobID)
+		if js.CurrentState() != domain.StateDeleted {
+			t.Fatalf("expected Deleted, got %s", js.CurrentState())
+		}
+	})
+
+	t.Run("deletes processing job", func(t *testing.T) {
+		s := memory.New()
+		jobID, _ := s.Enqueue(ctx, "default", &domain.Job{Name: "del_proc"})
+		s.Dequeue(ctx, []string{"default"}, 2*time.Second)
+		if err := s.DeleteJob(ctx, jobID); err != nil {
+			t.Fatalf("DeleteJob: %v", err)
+		}
+	})
+
+	t.Run("rejects succeeded job", func(t *testing.T) {
+		s := memory.New()
+		jobID, _ := s.Enqueue(ctx, "default", &domain.Job{Name: "del_succ"})
+		s.Dequeue(ctx, []string{"default"}, 2*time.Second)
+		s.ApplyState(ctx, jobID, domain.StateProcessing, &domain.JobState{Name: domain.StateSucceeded})
+		err := s.DeleteJob(ctx, jobID)
+		if err == nil {
+			t.Fatal("expected ErrTerminalState on Succeeded job")
+		}
+	})
+
+	t.Run("rejects already deleted", func(t *testing.T) {
+		s := memory.New()
+		jobID, _ := s.Enqueue(ctx, "default", &domain.Job{Name: "del_dbl"})
+		s.DeleteJob(ctx, jobID)
+		err := s.DeleteJob(ctx, jobID)
+		if err == nil {
+			t.Fatal("expected ErrTerminalState on already-Deleted job")
+		}
+	})
+
+	t.Run("rejects not found", func(t *testing.T) {
+		s := memory.New()
+		err := s.DeleteJob(ctx, "nonexistent")
+		if err == nil {
+			t.Fatal("expected error for nonexistent job")
+		}
+	})
 }
 
 // TestStorage_ScheduledJob verifies scheduled jobs are moved

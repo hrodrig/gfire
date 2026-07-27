@@ -1,47 +1,165 @@
-# GFire example configuration — copy to gfire.yaml and adjust.
+# ───────────────────────────────────────────────────────────
+# GFire configuration — copy to gfire.yaml and adjust.
+#
+# Every value shown is the default. The server starts with
+# these defaults when no config file is provided, so you only
+# need to include the sections you want to customise.
+#
+# Environment overrides: any key can be set as GFIRE_<PATH>
+# with dots replaced by underscores. Examples:
+#   GFIRE_STORAGE_BACKEND=postgres
+#   GFIRE_SERVER_PORT=9090
+#   GFIRE_AUTH_TOKEN=secret
+#
+# Start:  gfire server --config gfire.yaml
+# ───────────────────────────────────────────────────────────
+
+# ── Server & worker pool ──────────────────────────────────
 server:
-  host: "0.0.0.0"
-  port: 8080
-  workers: 4
+
+  # Bind address (0.0.0.0 = all interfaces).
+  host: "0.0.0.0"                     # default: 0.0.0.0
+
+  # HTTP port for the REST API.
+  port: 8080                          # default: 8080
+
+  # Number of worker goroutines spawned at startup.
+  # More workers = more concurrent job execution.
+  workers: 4                          # default: 4
+
+  # Queue names this server pulls from, in priority order.
+  # Workers try the first queue, then the second, etc.
   queues:
-    - default
-  dequeue_timeout: 5s
-  shutdown_timeout: 30s
-  default_timeout: 30s
-  max_body_size: 10485760
+    - default                         # default: ["default"]
 
+  # How long Dequeue blocks waiting for a job before
+  # retrying the queue list.
+  dequeue_timeout: 5s                 # default: 5s
+
+  # Graceful-shutdown budget: time allowed for in-flight
+  # workers to finish before the process exits.
+  shutdown_timeout: 30s               # default: 30s
+
+  # Per-job execution timeout when the job itself doesn't
+  # set one. Subprocess killed if it exceeds this.
+  default_timeout: 30s                # default: 30s
+
+  # Maximum request body size for the HTTP API (bytes).
+  max_body_size: 10485760             # default: 10 MB
+
+  # Optional unique identifier for this server instance.
+  # Defaults to the hostname if left empty.
+  # server_id: "prod-node-1"
+
+# ── Per-queue concurrency caps ────────────────────────────
+# Limits the number of jobs a queue can run concurrently
+# across ALL workers on this node. 0 = unlimited.
+# Use this to prevent a busy "default" queue from starving
+# a "critical" queue.
 queue_limits:
-  default: 0
+  default: 0                          # default: unlimited
+  # critical: 2                       # example: max 2 concurrent
 
+# ── Server heartbeat & orphan detection ───────────────────
 heartbeat:
-  interval: 5s
-  timeout: 30s
-  orphan_timeout: 5m
 
+  # How often this server refreshes its heartbeat in the
+  # storage backend. Other nodes use this to detect dead peers.
+  interval: 5s                        # default: 5s
+
+  # If a server fails to heartbeat within this window,
+  # it is considered stale by the coordinator.
+  timeout: 30s                        # default: 30s
+
+  # After a server is marked stale, this is the grace period
+  # before its in-flight (Processing) jobs are re-queued
+  # by another node's coordinator.
+  orphan_timeout: 5m                  # default: 5m
+
+# ── Scheduler: delayed & scheduled jobs ───────────────────
 scheduler:
-  interval: 1s
-  batch_size: 100
 
+  # How often the engine polls for due scheduled jobs.
+  interval: 1s                        # default: 1s
+
+  # Maximum scheduled jobs promoted to Enqueued per tick.
+  batch_size: 100                     # default: 100
+
+# ── Cleanup: expired job removal ──────────────────────────
+cleanup:
+
+  # How often the engine runs the expired-job sweep.
+  interval: 1h                        # default: 1h
+
+  # Jobs in terminal states (Succeeded, Failed, Dead, etc.)
+  # older than this are deleted permanently.
+  job_retention: 24h                  # default: 24h
+
+# ── Storage backend ───────────────────────────────────────
 storage:
-  backend: memory   # memory | postgres | redis | valkey
+
+  # One of: memory | postgres | redis
+  # - memory:    in-process, volatile. Good for dev/testing.
+  # - postgres:  durable, ACID. Recommended for production.
+  # - redis:     in-memory, high-throughput. Also works with
+  #              ValKey (drop-in compatible — same addr:port).
+  backend: memory                     # default: memory
+
+  # PostgreSQL settings (used when backend = postgres).
   postgres:
-    dsn: "postgres://gfire:gfire@localhost:5432/gfire?sslmode=disable"
+    # Full connection string (pgx format).
+    #   postgres://user:pass@host:port/db?sslmode=disable
+    # Pool sizing:
+    #   pool_max_conns is set via max_conns below.
+    dsn: "postgres://gfire:gfire@localhost:5432/gfire?sslmode=disable"  # no default — required
+    max_conns: 20                     # default: 20
+    min_conns: 2                      # default: 2
+
+  # Redis / ValKey settings (used when backend = redis).
   redis:
-    addr: "localhost:6379"
-    password: ""
-    db: 0
+    addr: "localhost:6379"            # default: localhost:6379
+    password: ""                      # default: none
+    db: 0                             # default: 0
 
+# ── Authentication ────────────────────────────────────────
 auth:
-  enabled: false
-  token: ""
 
+  # When enabled, every /v1/* endpoint (except /healthz and
+  # /readyz) requires an Authorization: Bearer <token> header.
+  # Token comparison uses constant-time compare (timing-safe).
+  enabled: false                      # default: false
+
+  # Bearer token value. Required when auth.enabled = true.
+  token: ""                           # default: ""
+
+# ── Handlers: external subprocess commands ─────────────────
+# Map job names to executables. GFire spawns one subprocess
+# per job, piping args as JSON on stdin.
+#
+# If no handlers are defined, the server runs in echo mode:
+# every job succeeds and returns its own args as the result.
+# This is useful for development and smoke-testing.
 handlers:
   - name: echo
     cmd: /bin/echo
+  # - name: sap_extract
+  #   cmd: /opt/handlers/sap-extract
+  # - name: send_email
+  #   cmd: /opt/handlers/send-email.py
 
+# ── Logging ───────────────────────────────────────────────
 logging:
-  level: info
-  format: text
 
+  # Minimum log level: debug | info | warn | error
+  level: info                         # default: info
+
+  # Output format: text (human-readable) or json (structured).
+  format: text                        # default: text
+
+# ── Metrics (Prometheus) ──────────────────────────────────
 metrics:
-  enabled: true
+
+  # When enabled, exposes GET /metrics in Prometheus text
+  # format. Note: the /metrics endpoint is planned for a
+  # future band (v1.0.0).
+  enabled: true                       # default: true

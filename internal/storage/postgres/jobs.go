@@ -162,6 +162,16 @@ func (s *Storage) Requeue(ctx context.Context, jobID string, reason string) erro
 	}
 	defer tx.Rollback(ctx)
 
+	// B7-006: reject Requeue on terminal states.
+	var currentState string
+	err = tx.QueryRow(ctx, `SELECT state FROM gfire.jobs WHERE id = $1`, jobID).Scan(&currentState)
+	if err != nil {
+		return serrors.ErrNotFound
+	}
+	if domain.IrreversibleStates[currentState] {
+		return serrors.ErrTerminalState
+	}
+
 	now := time.Now().UTC()
 	tag, err := tx.Exec(ctx, `
 		UPDATE gfire.jobs
@@ -317,6 +327,48 @@ func (s *Storage) GetOrphanedJobs(ctx context.Context, staleAge time.Duration) (
 		tickets = append(tickets, &domain.JobTicket{JobID: id, Token: "orphan-" + id})
 	}
 	return tickets, rows.Err()
+}
+
+// DeleteJob marks a job as Deleted (soft-delete, B5-014).
+func (s *Storage) DeleteJob(ctx context.Context, jobID string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("delete begin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var currentState string
+	err = tx.QueryRow(ctx, `SELECT state FROM gfire.jobs WHERE id = $1`, jobID).Scan(&currentState)
+	if err != nil {
+		return serrors.ErrNotFound
+	}
+	if domain.IrreversibleStates[currentState] {
+		return serrors.ErrTerminalState
+	}
+
+	now := time.Now().UTC()
+	tag, err := tx.Exec(ctx, `
+		UPDATE gfire.jobs
+		SET state = $1, progress_at = NULL, updated_at = $2
+		WHERE id = $3`,
+		domain.StateDeleted, now, jobID,
+	)
+	if err != nil {
+		return fmt.Errorf("delete update: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return serrors.ErrNotFound
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO gfire.job_states (job_id, name, created_at)
+		VALUES ($1, $2, $3)`,
+		jobID, domain.StateDeleted, now,
+	)
+	if err != nil {
+		return fmt.Errorf("delete state: %w", err)
+	}
+	return tx.Commit(ctx)
 }
 
 func nullIfEmpty(s string) *string {

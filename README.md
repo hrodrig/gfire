@@ -16,20 +16,22 @@
   <img src="docs/gfire-hero.png" alt="GFire — standalone background job service" width="100%" />
 </p>
 
-GFire is a **headless background job service**: a standalone Go binary that runs a worker pool and (soon) a REST API. Applications enqueue work over HTTP — they never import GFire as a library. Workers spawn external handler processes (`cmd`) against shared storage (**PostgreSQL**, **Redis**, or **ValKey**).
+GFire is a **headless background job service**: a standalone Go binary that runs a REST API and worker pool. Applications enqueue work over HTTP — they never import GFire as a library. Workers spawn external handler processes (`cmd`) against shared storage (**PostgreSQL**, **Redis**, or **ValKey**).
 
-> **Early development (v0.6.0 — usable preview).** Run `gfire server`, enqueue via **curl**, inspect with CLI. Not production-hardened — see [ROADMAP.md](ROADMAP.md).
+> **Early development (v0.6.1 — usable preview).** Run `gfire server`, enqueue via **curl**, inspect with CLI. Not production-hardened — see [ROADMAP.md](ROADMAP.md).
 
 ## Table of contents
 
-- [Early development — not for production](#early-development--not-for-production)
-- [Current status](#current-status-band-1--v020)
+- [Quick start](#quick-start)
+- [Config reference](#config-reference)
+- [Curl cookbook](#curl-cookbook)
+- [Current status](#current-status)
 - [What GFire will be](#what-gfire-will-be)
-- [Architecture (sketch)](#architecture-sketch)
+- [Architecture](#architecture)
 - [Requirements](#requirements)
 - [Development](#development)
-- [PostgreSQL (Band 1)](#postgresql-band-1)
-- [Redis / ValKey (Band 2)](#redis--valkey-band-2)
+- [PostgreSQL setup](#postgresql-setup)
+- [Redis / ValKey setup](#redis--valkey-setup)
 - [Compare](#compare)
 - [Project docs](#project-docs)
 - [Get involved](#get-involved)
@@ -37,28 +39,174 @@ GFire is a **headless background job service**: a standalone Go binary that runs
 
 [↑ Back to top](#readme-top)
 
-## Early development — not for production
+## Quick start
 
-**GFire is in pre-release (v0.6.0 — first usable preview).**
+No dependencies. One binary, one command.
 
-- **`gfire server`** runs engine + REST API (memory/PostgreSQL/Redis backends).
-- Enqueue and inspect jobs with **curl** or **`gfire job`** — no Go client required.
-- Recurring cron, bulk enqueue, OpenAPI, and Prometheus metrics are **not** in this release yet.
-- **Do not use in production** without your own hardening.
+```sh
+make build             # → bin/gfire
+make server            # → build + run (creates gfire.yaml from example if missing)
+```
 
-Check [ROADMAP.md](ROADMAP.md) for what is planned and what is done.
+Or manually:
+
+```sh
+go build -o bin/gfire ./cmd/gfire
+cp gfire.example.yaml gfire.yaml
+./bin/gfire server --config gfire.yaml
+```
+
+Default: in-memory backend, 4 workers, listening on `0.0.0.0:8080`. No external services needed.
+
+**Health checks:**
+
+```sh
+curl -sS http://127.0.0.1:8080/healthz   # → {"status":"ok"}
+curl -sS http://127.0.0.1:8080/readyz    # → storage reachable probe
+```
 
 [↑ Back to top](#readme-top)
 
-## Current status (v0.6.0 — usable preview)
+## Config reference
+
+All configuration lives in `gfire.yaml`. Copy `gfire.example.yaml` as a starting point — every value shown is the default.
+
+```yaml
+# Minimal config (in-memory, no auth):
+storage:
+  backend: memory
+
+server:
+  workers: 8          # goroutines pulling from queues
+  queues:
+    - critical
+    - default
+```
+
+**Key sections:**
+
+| Section | Purpose |
+|---------|---------|
+| `server` | Bind address, port, worker count, queue list, timeouts |
+| `queue_limits` | Per-queue concurrency cap (`0` = unlimited) |
+| `storage` | Backend selection: `memory`, `postgres`, or `redis` |
+| `auth` | Optional Bearer token authentication |
+| `handlers` | Name → executable path mapping for job subprocesses |
+| `heartbeat` | Server heartbeat interval, stale timeout, orphan grace period |
+| `scheduler` | Poll interval and batch size for delayed/scheduled jobs |
+| `cleanup` | How often expired terminal-state jobs are purged |
+| `logging` | Level (`debug`/`info`/`warn`/`error`) and format (`text`/`json`) |
+
+**Environment overrides:** Every key can be set as `GFIRE_<PATH>` with dots replaced by underscores:
+
+```sh
+GFIRE_STORAGE_BACKEND=postgres GFIRE_AUTH_TOKEN=secret ./bin/gfire server
+```
+
+Full reference: [`gfire.example.yaml`](gfire.example.yaml) — every field documented with defaults.
+
+[↑ Back to top](#readme-top)
+
+## Curl cookbook
+
+All examples assume the server is running on `localhost:8080`.
+
+### Enqueue a job
+
+```sh
+curl -sS -X POST http://127.0.0.1:8080/v1/jobs/enqueue \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"echo","args":{"hello":"world"},"queue":"default"}'
+# → {"job_id":"...","status":"enqueued","queue":"default"}
+```
+
+With timeout and retry:
+
+```sh
+curl -sS -X POST http://127.0.0.1:8080/v1/jobs/enqueue \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"echo","args":{"x":1},"timeout":"5m","retry_max":3}'
+```
+
+### Schedule a job (delayed execution)
+
+```sh
+curl -sS -X POST http://127.0.0.1:8080/v1/jobs/schedule \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"echo","args":{"x":1},"enqueue_at":"2026-07-28T09:00:00Z"}'
+# → {"job_id":"...","status":"scheduled","enqueue_at":"2026-07-28T09:00:00Z"}
+```
+
+### Get a job (state + history)
+
+```sh
+curl -sS http://127.0.0.1:8080/v1/jobs/JOB_ID
+# → {"job":{...},"states":[...],"current_state":"Succeeded"}
+```
+
+### List jobs (filter by state)
+
+```sh
+curl -sS 'http://127.0.0.1:8080/v1/jobs?limit=20'
+curl -sS 'http://127.0.0.1:8080/v1/jobs?state=Failed&limit=10'
+```
+
+### Cancel an in-flight job
+
+```sh
+curl -sS -X POST http://127.0.0.1:8080/v1/jobs/JOB_ID/cancel
+# → {"status":"cancelling"}
+```
+
+### Requeue a failed job (manual retry)
+
+```sh
+curl -sS -X POST http://127.0.0.1:8080/v1/jobs/JOB_ID/requeue
+# → {"status":"enqueued"}
+```
+
+### Chain a continuation (child job on terminal state)
+
+```sh
+curl -sS -X POST http://127.0.0.1:8080/v1/jobs/JOB_ID/continue \
+  -H 'Content-Type: application/json' \
+  -d '{"child_name":"echo","child_args":{"step":2},"condition":"on_succeeded"}'
+# → {"status":"registered"}
+```
+
+Conditions: `on_succeeded` (default), `on_failed`, `on_any`.
+
+### Queues and servers
+
+```sh
+curl -sS http://127.0.0.1:8080/v1/queues         # all queues + depth
+curl -sS http://127.0.0.1:8080/v1/queues/default  # single queue detail
+curl -sS http://127.0.0.1:8080/v1/servers         # active servers in cluster
+```
+
+### CLI equivalents
+
+```sh
+./bin/gfire job list --config gfire.yaml
+./bin/gfire job list --state Failed --config gfire.yaml
+./bin/gfire job get JOB_ID --config gfire.yaml
+./bin/gfire job requeue JOB_ID --config gfire.yaml
+```
+
+[↑ Back to top](#readme-top)
+
+## Current status
+
+v0.6.1 — usable preview. Server, REST API, CLI, all three storage backends.
 
 | Component | Status |
 |-----------|--------|
-| Storage (memory, PG, Redis/ValKey) | ✅ |
-| Engine (workers, retry, cancel, DLQ) | ✅ |
-| Continuations + orphan recovery | ✅ |
-| REST API (enqueue, schedule, list, cancel, continue) | ✅ core |
-| CLI (`gfire server`, `gfire job list/get/requeue`) | ✅ core |
+| Storage (memory, PostgreSQL, Redis/ValKey) | ✅ |
+| Engine (workers, retry, cancel, DLQ, result capture) | ✅ |
+| Continuations (chaining) + orphan recovery | ✅ |
+| REST API (enqueue, schedule, list, cancel, continue, requeue) | ✅ |
+| CLI (`gfire server`, `gfire job list/get/requeue`) | ✅ |
+| Bearer auth, request IDs, rate-limited worker backoff | ✅ |
 | Recurring cron, bulk enqueue, OpenAPI, `/metrics` | ⬜ next bands |
 
 [↑ Back to top](#readme-top)
@@ -76,17 +224,17 @@ See [SPECIFICATIONS.md](SPECIFICATIONS.md) for the full design.
 
 [↑ Back to top](#readme-top)
 
-## Architecture (sketch)
+## Architecture
 
 ```
 App (any language)  --HTTP-->  GFire API  -->  Engine / workers
-                                                  |
-                                                  v
-                                            Shared storage
-                                         (PG / Redis / ValKey)
-                                                  |
-                                                  v
-                                         Handler subprocess (cmd)
+                                                 |
+                                                 v
+                                           Shared storage
+                                        (PG / Redis / ValKey)
+                                                 |
+                                                 v
+                                        Handler subprocess (cmd)
 ```
 
 Job args are **instruction cards** (~1KB), not large payloads. Heavy data lives in S3/DB; the handler fetches and processes it.
@@ -95,109 +243,74 @@ Job args are **instruction cards** (~1KB), not large payloads. Heavy data lives 
 
 ## Requirements
 
-- **Go 1.26.5** (pinned in [`go.mod`](go.mod); includes fix for `crypto/tls` GO-2026-5856)
+- **Go 1.26.5** (pinned in [`go.mod`](go.mod))
 - Docker (optional) for PostgreSQL / Redis / ValKey via `docker compose`
-- [`golang-migrate`](https://github.com/golang-migrate/migrate) CLI for schema migrations (Band 1)
+- [`golang-migrate`](https://github.com/golang-migrate/migrate) CLI for PostgreSQL schema migrations
 
 [↑ Back to top](#readme-top)
 
 ## Development
 
 ```sh
-make help     # list targets
+make help     # list all targets
 make all      # fmt, vet, test, gocyclo, cover, build
 make ci       # fmt-check + vet + gocyclo + test
 make security # govulncheck + gocyclo + grype
-make cover    # memory backend ≥80% gate
-make version  # build and print version metadata
+make cover    # memory backend coverage (≥80% gate)
+make version  # build and print version + commit info
 make install  # install bin/gfire to $(go env GOPATH)/bin
-make server   # build + run daemon (creates gfire.yaml from example if missing)
+make server   # build + run daemon
 ```
 
 Binary output: `bin/gfire`.
 
-### Quick start (in-memory)
-
-```sh
-make server   # or: make build && ./bin/gfire server --config gfire.yaml
-```
-
-**Note:** `GET /v1` returns **404** — there is no API root page. Use the routes below.
-
-**Health (k8s probes / smoke test):**
-
-```sh
-curl -sS http://127.0.0.1:8080/healthz   # → {"status":"ok"}
-curl -sS http://127.0.0.1:8080/readyz    # → storage reachable
-```
-
-**Enqueue a job:**
-
-```sh
-curl -sS -X POST http://127.0.0.1:8080/v1/jobs/enqueue \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"echo","args":{"hello":"world"},"queue":"default"}'
-# → {"job_id":"...","status":"enqueued","queue":"default"}
-```
-
-**Inspect jobs (CLI or curl):**
-
-```sh
-./bin/gfire job list --config gfire.yaml
-curl -sS 'http://127.0.0.1:8080/v1/jobs?limit=10'
-
-# replace JOB_ID from enqueue response:
-curl -sS http://127.0.0.1:8080/v1/jobs/JOB_ID
-./bin/gfire job get JOB_ID --config gfire.yaml
-```
-
-**Queues and servers:**
-
-```sh
-curl -sS http://127.0.0.1:8080/v1/queues
-curl -sS http://127.0.0.1:8080/v1/servers
-```
-
-Full route list: [SPECIFICATIONS.md §3](SPECIFICATIONS.md#3-rest-api-http) · config: `gfire.example.yaml`
-
-PostgreSQL: set `storage.backend: postgres` in `gfire.yaml`, run `make db-up && make migrate-up` (includes migration `002` for job results).
-
 [↑ Back to top](#readme-top)
 
-## PostgreSQL (Band 1)
+## PostgreSQL setup
+
+Set `storage.backend: postgres` in `gfire.yaml`, then:
 
 ```sh
-make db-up
-make migrate-up
+make db-up         # start postgres + redis + valkey via docker compose
+make migrate-up    # apply gfire schema (includes migration 002 for job results)
 go test ./internal/storage/postgres/ -count=1
+./bin/gfire server --config gfire.yaml
 ```
 
-Default DSN: `postgres://gfire:gfire@localhost:5432/gfire?sslmode=disable` (see `Makefile` / `docker-compose.yml`).
+Default DSN: `postgres://gfire:gfire@localhost:5432/gfire?sslmode=disable`
+(see `Makefile` / `docker-compose.yml`).
 
 [↑ Back to top](#readme-top)
 
-## Redis / ValKey (Band 2)
+## Redis / ValKey setup
+
+Set `storage.backend: redis` in `gfire.yaml`, then:
 
 ```sh
-make db-up
+make db-up         # starts redis on :6379, valkey on :6380
 go test ./internal/storage/redis/ -count=1
+./bin/gfire server --config gfire.yaml
 ```
 
-Default Redis: `localhost:6379`. ValKey (same API): `GFIRE_REDIS_ADDR=localhost:6380 go test ./internal/storage/redis/ -count=1`.
+ValKey is a drop-in Redis-compatible fork. Same config block, same `addr:port` field:
+
+```sh
+GFIRE_STORAGE_REDIS_ADDR=localhost:6380 ./bin/gfire server
+```
 
 [↑ Back to top](#readme-top)
 
 ## Compare
 
-> Snapshot **v0.3.0 / Band 2**. GFire cells marked WIP/planned are not production-ready.
+Snapshot v0.6.1. GFire is a standalone service (HTTP API); the rest are embedded Go libraries.
 
 | Axis | GFire | Asynq | River |
 |------|-------|-------|-------|
 | Model | Standalone service | Go library | Go library |
-| Enqueue | HTTP / curl ✅ v0.6.0 | Go API | Go API |
-| Storage | PG + Redis/ValKey `shipped` | Redis | PostgreSQL |
-| Handlers | External `cmd` (`planned`) | In-process | In-process |
-| HA | N peers, no Raft (`planned`) | Redis | PG `SKIP LOCKED` |
+| Enqueue | HTTP / curl ✅ | Go API | Go API |
+| Storage | PG + Redis/ValKey ✅ | Redis | PostgreSQL |
+| Handlers | External `cmd` ✅ | In-process | In-process |
+| HA | N peers, no Raft (partial) | Redis | PG `SKIP LOCKED` |
 
 Full matrix (Sidekiq, Celery, Faktory, narratives): **[docs/compare.md](docs/compare.md)** · [gfire.net/compare](https://gfire.net/compare)
 
@@ -210,6 +323,7 @@ Full matrix (Sidekiq, Celery, Faktory, narratives): **[docs/compare.md](docs/com
 | [SPECIFICATIONS.md](SPECIFICATIONS.md) | Behavior / architecture contract |
 | [ROADMAP.md](ROADMAP.md) | Weekly bands → v1.0.0 |
 | [CHANGELOG.md](CHANGELOG.md) | Shipped changes per release |
+| [gfire.example.yaml](gfire.example.yaml) | Configuration reference (every field documented) |
 | [docs/compare.md](docs/compare.md) | GFire vs Asynq, River, Faktory, Sidekiq, Celery |
 | [AGENTS.md](AGENTS.md) | Conventions for AI agents / contributors |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |

@@ -23,4 +23,8 @@ var (
 	// ErrLockNotHeld is returned by Lock.Release when the lock was
 	// lost or already released.
 	ErrLockNotHeld = errors.New("lock not held")
+
+	// ErrTerminalState is returned when an operation targets a job in a
+	// terminal state (Requeue on Succeeded/Dead/Cancelled, etc.).
+	ErrTerminalState = errors.New("terminal state")
 )

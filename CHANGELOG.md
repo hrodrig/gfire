@@ -48,11 +48,16 @@ First **usable preview**: run the daemon, enqueue with curl, inspect with CLI.
 
 ## [0.4.0] - 2026-07-11
 
-Band 3 — engine (workers, retry, cancel, DLQ, result capture). See git history; pre-0.6.0 develop releases were not always tagged.
+Band 3 milestone — engine processes jobs with retry, cancel, and DLQ.
 
 ### Added
 
-- **Engine (Band 3):** worker pool, middleware, subprocess handlers, integration tests.
+- **Engine (Band 3):** worker pool (goroutine-per-worker), exponential backoff retry with jitter, in-flight job cancel (B3-009), per-queue concurrency caps (B3-010), job result capture — handler stdout cap 64KB (B3-011), Dead/poison queue after retry exhaustion (B3-012).
+- **Middleware pipeline:** `PanicRecovery`, context propagation, attempt counting.
+- **Handler model:** external subprocess via YAML `cmd`; in-process `Func` runner for tests.
+- Per-job timeout + heartbeat ticker (60s) for long-running handlers.
+- Graceful shutdown: SIGTERM → drain workers → re-queue in-flight jobs → unregister.
+- Integration test: in-memory engine processes 100 jobs.
 
 ## [0.3.0] - 2026-07-09
 

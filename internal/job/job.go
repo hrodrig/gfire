@@ -61,6 +61,16 @@ var TerminalStates = map[string]bool{
 	StateCancelled: true,
 }
 
+// IrreversibleStates are states from which manual Requeue is rejected
+// (Succeeded, Dead, Cancelled, Deleted). Failed jobs can be requeued
+// as a manual retry.
+var IrreversibleStates = map[string]bool{
+	StateSucceeded: true,
+	StateDead:      true,
+	StateCancelled: true,
+	StateDeleted:   true,
+}
+
 // ServerInfo represents a GFire node registered in the cluster.
 type ServerInfo struct {
 	ID            string    `json:"id"`

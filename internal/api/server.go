@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/hrodrig/gfire/internal/config"
 	"github.com/hrodrig/gfire/internal/engine"
 	"github.com/hrodrig/gfire/internal/storage"
@@ -12,10 +13,11 @@ import (
 
 // Server serves REST routes and holds runtime dependencies.
 type Server struct {
-	cfg    *config.Config
-	store  storage.Storage
-	engine *engine.Engine
-	mux    *http.ServeMux
+	cfg        *config.Config
+	store      storage.Storage
+	engine     *engine.Engine
+	mux        *http.ServeMux
+	httpServer *http.Server
 }
 
 // NewServer builds an API server. eng may be nil only in tests without cancel.
@@ -28,6 +30,7 @@ func NewServer(cfg *config.Config, store storage.Storage, eng *engine.Engine) *S
 // Handler returns the root HTTP handler with middleware.
 func (s *Server) Handler() http.Handler {
 	var h http.Handler = s.mux
+	h = requestID(h)
 	h = maxBody(s.cfg.Server.MaxBodySize, h)
 	if s.cfg.Auth.Enabled {
 		h = bearerAuth(s.cfg.Auth.Token, h)
@@ -37,16 +40,33 @@ func (s *Server) Handler() http.Handler {
 
 // ListenAndServe starts the HTTP server.
 func (s *Server) ListenAndServe() error {
-	srv := &http.Server{
+	s.httpServer = &http.Server{
 		Addr:    s.cfg.ListenAddr(),
 		Handler: s.Handler(),
 	}
-	return srv.ListenAndServe()
+	return s.httpServer.ListenAndServe()
 }
 
-// Shutdown is a placeholder for graceful HTTP shutdown (Band 7 polish).
+// Shutdown gracefully stops the HTTP server.
 func (s *Server) Shutdown(ctx context.Context) error {
-	return nil
+	if s.httpServer == nil {
+		return nil
+	}
+	return s.httpServer.Shutdown(ctx)
+}
+
+// requestID middleware injects a unique request ID (from X-Request-ID header, or
+// generates one) into the request context for structured logging.
+func requestID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := r.Header.Get("X-Request-ID")
+		if id == "" {
+			id = uuid.NewString()
+		}
+		w.Header().Set("X-Request-ID", id)
+		ctx := context.WithValue(r.Context(), RequestIDKey, id)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 func (s *Server) routes() {
@@ -58,6 +78,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /v1/jobs", s.handleListJobs)
 	s.mux.HandleFunc("POST /v1/jobs/{id}/requeue", s.handleRequeue)
 	s.mux.HandleFunc("POST /v1/jobs/{id}/cancel", s.handleCancel)
+	s.mux.HandleFunc("POST /v1/jobs/{id}/delete", s.handleDelete)
 	s.mux.HandleFunc("POST /v1/jobs/{id}/continue", s.handleContinue)
 	s.mux.HandleFunc("GET /v1/queues", s.handleListQueues)
 	s.mux.HandleFunc("GET /v1/queues/{name}", s.handleGetQueue)

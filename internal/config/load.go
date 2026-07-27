@@ -34,6 +34,9 @@ func Load(path string) (*Config, error) {
 	if cfg.QueueLimits == nil {
 		cfg.QueueLimits = map[string]int{}
 	}
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
 	return &cfg, nil
 }
 

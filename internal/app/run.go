@@ -46,10 +46,6 @@ func RunServer(ctx context.Context, cfg *config.Config) error {
 	}
 
 	apiSrv := api.NewServer(cfg, store, eng)
-	httpServer := &http.Server{
-		Addr:    cfg.ListenAddr(),
-		Handler: apiSrv.Handler(),
-	}
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -59,7 +55,7 @@ func RunServer(ctx context.Context, cfg *config.Config) error {
 			"api", base+"/v1",
 			"bind", cfg.ListenAddr(),
 		)
-		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := apiSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}
 	}()
@@ -78,6 +74,6 @@ func RunServer(ctx context.Context, cfg *config.Config) error {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
-	_ = httpServer.Shutdown(shutdownCtx)
+	_ = apiSrv.Shutdown(shutdownCtx)
 	return eng.Stop(shutdownCtx)
 }

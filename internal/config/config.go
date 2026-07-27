@@ -2,6 +2,7 @@
 package config
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/hrodrig/gfire/internal/engine"
@@ -168,4 +169,13 @@ func (c *Config) ListenAddr() string {
 		port = 8080
 	}
 	return joinHostPort(host, port)
+}
+
+// Validate checks configuration invariants early (B7-005).
+func (c *Config) Validate() error {
+	backends := map[string]bool{"memory": true, "postgres": true, "redis": true}
+	if !backends[c.Storage.Backend] {
+		return fmt.Errorf("unknown storage.backend: %q (valid: memory, postgres, redis)", c.Storage.Backend)
+	}
+	return nil
 }
