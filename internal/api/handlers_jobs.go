@@ -73,6 +73,76 @@ func (s *Server) handleEnqueue(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+type batchEnqueueRequest struct {
+	Jobs []enqueueRequest `json:"jobs"`
+}
+
+func (s *Server) handleBatchEnqueue(w http.ResponseWriter, r *http.Request) {
+	var req batchEnqueueRequest
+	if err := decodeJSON(r, s.cfg.Server.MaxBodySize, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(req.Jobs) == 0 {
+		writeError(w, http.StatusBadRequest, "jobs array is required and must not be empty")
+		return
+	}
+
+	type acceptedEntry struct {
+		JobID string `json:"job_id"`
+		Name  string `json:"name"`
+		Queue string `json:"queue"`
+	}
+	type rejectedEntry struct {
+		Name   string `json:"name"`
+		Reason string `json:"reason"`
+		Index  int    `json:"index"`
+	}
+
+	var accepted []acceptedEntry
+	var rejected []rejectedEntry
+
+	for i, jr := range req.Jobs {
+		if jr.Name == "" {
+			rejected = append(rejected, rejectedEntry{Name: jr.Name, Reason: "name is required", Index: i})
+			continue
+		}
+		queue := jr.Queue
+		if queue == "" {
+			queue = "default"
+		}
+		args := []byte("{}")
+		if len(jr.Args) > 0 {
+			args = append([]byte(nil), jr.Args...)
+		}
+		job := &domain.Job{Name: jr.Name, Args: args, Queue: queue, RetryMax: jr.RetryMax}
+		if jr.Timeout != "" {
+			d, err := time.ParseDuration(jr.Timeout)
+			if err != nil {
+				rejected = append(rejected, rejectedEntry{Name: jr.Name, Reason: "invalid timeout: " + jr.Timeout, Index: i})
+				continue
+			}
+			job.Timeout = d
+		}
+		id, err := s.store.Enqueue(r.Context(), queue, job)
+		if err != nil {
+			rejected = append(rejected, rejectedEntry{Name: jr.Name, Reason: "enqueue failed: " + err.Error(), Index: i})
+			continue
+		}
+		accepted = append(accepted, acceptedEntry{JobID: id, Name: jr.Name, Queue: queue})
+	}
+
+	status := http.StatusCreated
+	if len(accepted) == 0 {
+		status = http.StatusBadRequest
+	}
+	writeJSON(w, status, map[string]any{
+		"accepted": accepted,
+		"rejected": rejected,
+		"total":    len(req.Jobs),
+	})
+}
+
 type scheduleRequest struct {
 	enqueueRequest
 	EnqueueAt time.Time `json:"enqueue_at"`

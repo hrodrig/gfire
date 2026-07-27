@@ -73,6 +73,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /healthz", s.handleHealthz)
 	s.mux.HandleFunc("GET /readyz", s.handleReadyz)
 	s.mux.HandleFunc("POST /v1/jobs/enqueue", s.handleEnqueue)
+	s.mux.HandleFunc("POST /v1/jobs/enqueue/batch", s.handleBatchEnqueue)
 	s.mux.HandleFunc("POST /v1/jobs/schedule", s.handleSchedule)
 	s.mux.HandleFunc("GET /v1/jobs/{id}", s.handleGetJob)
 	s.mux.HandleFunc("GET /v1/jobs", s.handleListJobs)

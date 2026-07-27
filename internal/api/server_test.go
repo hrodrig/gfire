@@ -173,3 +173,80 @@ func TestAPI_RecurringCRUD(t *testing.T) {
 		t.Fatal("recurring entry not deleted")
 	}
 }
+
+func TestAPI_BatchEnqueue(t *testing.T) {
+	ctx := context.Background()
+	store := memory.New()
+	cfg := config.Defaults()
+	cfg.Server.Workers = 2
+
+	eng := engine.New(store, cfg.EngineConfig("test"), handler.NopRunner{}, nil)
+	if err := eng.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = eng.Stop(stopCtx)
+	})
+
+	srv := api.NewServer(&cfg, store, eng)
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+
+	// Batch with 3 valid + 1 invalid (missing name).
+	body := `{"jobs":[
+		{"name":"a","args":{"x":1}},
+		{"name":"b"},
+		{"name":""},
+		{"name":"c","args":{"z":3}}
+	]}`
+	resp, err := http.Post(ts.URL+"/v1/jobs/enqueue/batch", "application/json", bytes.NewBufferString(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", resp.StatusCode)
+	}
+
+	var result map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	accepted, _ := result["accepted"].([]any)
+	rejected, _ := result["rejected"].([]any)
+	total, _ := result["total"].(float64)
+
+	if int(total) != 4 {
+		t.Fatalf("total: expected 4, got %v", total)
+	}
+	if len(accepted) != 3 {
+		t.Fatalf("accepted: expected 3, got %d", len(accepted))
+	}
+	if len(rejected) != 1 {
+		t.Fatalf("rejected: expected 1, got %d", len(rejected))
+	}
+
+	// Verify the accepted jobs completed.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		jobsResp, _ := http.Get(ts.URL + "/v1/jobs?limit=10")
+		var list map[string]any
+		json.NewDecoder(jobsResp.Body).Decode(&list)
+		jobsResp.Body.Close()
+		jobs, _ := list["jobs"].([]any)
+		succeeded := 0
+		for _, j := range jobs {
+			jm, _ := j.(map[string]any)
+			if jm["current_state"] == "Succeeded" {
+				succeeded++
+			}
+		}
+		if succeeded >= 3 {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("not all accepted jobs completed")
+}

@@ -43,14 +43,16 @@ func TestRecurring_FiresViaEngine(t *testing.T) {
 
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		ticket, err := store.Dequeue(ctx, []string{"default"}, 500*time.Millisecond)
+		jobs, err := store.GetJobsByState(ctx, "", 0, 50)
 		if err != nil {
 			continue
 		}
-		js, _ := store.GetJob(ctx, ticket.JobID)
-		if js.Job.Name == "work" {
-			return // success
+		for _, jw := range jobs {
+			if jw.Job.Name == "work" {
+				return // success — cron fired and enqueued a "work" job
+			}
 		}
+		time.Sleep(200 * time.Millisecond)
 	}
 	t.Fatal("recurring job was never enqueued")
 }
@@ -87,13 +89,15 @@ func TestRecurring_DisabledEntryDoesNotFire(t *testing.T) {
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		ticket, err := store.Dequeue(ctx, []string{"default"}, 300*time.Millisecond)
+		jobs, err := store.GetJobsByState(ctx, "", 0, 50)
 		if err != nil {
 			continue
 		}
-		js, _ := store.GetJob(ctx, ticket.JobID)
-		if js.Job.Name == "ghost" {
-			t.Fatal("disabled recurring job fired")
+		for _, jw := range jobs {
+			if jw.Job.Name == "ghost" {
+				t.Fatal("disabled recurring job fired")
+			}
 		}
+		time.Sleep(200 * time.Millisecond)
 	}
 }
