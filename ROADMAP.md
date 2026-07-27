@@ -304,7 +304,7 @@ Engine.Stop():
 | **B5-012** Bearer auth (`auth.enabled`)                    | ✅      |
 | Queues + servers + healthz/readyz                          | ✅      |
 | **B5-014** job delete (`POST /v1/jobs/{id}/delete`) | ✅ |
-| Recurring CRUD handlers                                    | ⬜      |
+| Recurring CRUD handlers | ✅ |
 | **B5-009** bulk enqueue                                    | ⬜      |
 | **B5-010** Idempotency-Key                                 | ⬜      |
 | **B5-013** OpenAPI                                         | ⬜      |

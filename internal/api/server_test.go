@@ -74,3 +74,102 @@ func TestAPI_EnqueueAndProcess(t *testing.T) {
 	}
 	t.Fatal("job did not succeed in time")
 }
+
+func TestAPI_RecurringCRUD(t *testing.T) {
+	ctx := context.Background()
+	store := memory.New()
+	cfg := config.Defaults()
+	cfg.Server.Workers = 1
+
+	eng := engine.New(store, cfg.EngineConfig("test"), handler.NopRunner{}, nil)
+	if err := eng.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = eng.Stop(stopCtx)
+	})
+
+	srv := api.NewServer(&cfg, store, eng)
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+
+	// Create a recurring job.
+	body := `{"id":"nightly","job_name":"cleanup","cron_expr":"@every 1h","args":{"days":30}}`
+	resp, err := http.Post(ts.URL+"/v1/recurring", "application/json", bytes.NewBufferString(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create: expected 201, got %d", resp.StatusCode)
+	}
+
+	// List recurring jobs.
+	resp2, err := http.Get(ts.URL + "/v1/recurring")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+	var list map[string]any
+	if err := json.NewDecoder(resp2.Body).Decode(&list); err != nil {
+		t.Fatal(err)
+	}
+	entries, _ := list["recurring"].([]any)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 recurring entry, got %d", len(entries))
+	}
+
+	// Trigger it immediately.
+	resp3, err := http.Post(ts.URL+"/v1/recurring/nightly/trigger", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp3.Body.Close()
+	if resp3.StatusCode != http.StatusCreated {
+		t.Fatalf("trigger: expected 201, got %d", resp3.StatusCode)
+	}
+	var triggered map[string]any
+	json.NewDecoder(resp3.Body).Decode(&triggered)
+	jobID, _ := triggered["job_id"].(string)
+	if jobID == "" {
+		t.Fatal("trigger did not return job_id")
+	}
+
+	// Verify the triggered job exists and completes.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		r, _ := http.Get(ts.URL + "/v1/jobs/" + jobID)
+		var detail map[string]any
+		json.NewDecoder(r.Body).Decode(&detail)
+		r.Body.Close()
+		if detail["current_state"] == "Succeeded" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Delete it.
+	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/v1/recurring/nightly", nil)
+	resp4, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp4.Body.Close()
+	if resp4.StatusCode != http.StatusOK {
+		t.Fatalf("delete: expected 200, got %d", resp4.StatusCode)
+	}
+
+	// Verify it's gone.
+	resp5, err := http.Get(ts.URL + "/v1/recurring")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp5.Body.Close()
+	var list2 map[string]any
+	json.NewDecoder(resp5.Body).Decode(&list2)
+	if entries, _ := list2["recurring"].([]any); len(entries) != 0 {
+		t.Fatal("recurring entry not deleted")
+	}
+}
