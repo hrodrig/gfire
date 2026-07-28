@@ -327,7 +327,7 @@ Engine.Stop():
 | `gfire server` — engine + API + SIGTERM shutdown                  | ✅      |
 | `gfire job list/get/requeue`                                    | ✅      |
 | `gfire migrate`, `gfire queue list`, `gfire server status` | ✅ |
-| Prometheus `GET /metrics`                                       | ⬜      |
+| Prometheus `GET /metrics` | ✅ |
 | **B6-009–011** dead filter, CLI cancel, dead metric             | ⬜      |
 
 

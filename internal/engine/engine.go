@@ -158,6 +158,17 @@ func (e *Engine) decActive(queue string) {
 	e.activeMu.Unlock()
 }
 
+// ActiveCount returns the total in-flight job count across all queues.
+func (e *Engine) ActiveCount() int {
+	e.activeMu.Lock()
+	defer e.activeMu.Unlock()
+	n := 0
+	for _, c := range e.active {
+		n += c
+	}
+	return n
+}
+
 func (e *Engine) queuesUnderLimit() []string {
 	e.activeMu.Lock()
 	defer e.activeMu.Unlock()
