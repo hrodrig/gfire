@@ -162,4 +162,8 @@ type Storage interface {
 	// DeleteJob marks a job as Deleted (soft-delete). Returns ErrNotFound if the job
 	// doesn't exist, or ErrTerminalState if already in an irreversible state.
 	DeleteJob(ctx context.Context, jobID string) error
+
+	// EnqueueIdempotent creates a job only if the idempotency key hasn't been used.
+	// Returns the job ID (existing or new) and whether this call created the job.
+	EnqueueIdempotent(ctx context.Context, queue string, job *domain.Job) (id string, created bool, err error)
 }

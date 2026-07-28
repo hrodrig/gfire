@@ -250,3 +250,73 @@ func TestAPI_BatchEnqueue(t *testing.T) {
 	}
 	t.Fatal("not all accepted jobs completed")
 }
+
+func TestAPI_IdempotencyKey(t *testing.T) {
+	ctx := context.Background()
+	store := memory.New()
+	cfg := config.Defaults()
+	cfg.Server.Workers = 1
+
+	eng := engine.New(store, cfg.EngineConfig("test"), handler.NopRunner{}, nil)
+	if err := eng.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = eng.Stop(stopCtx)
+	})
+
+	srv := api.NewServer(&cfg, store, eng)
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+
+	body := `{"name":"idem-test","args":{"x":1}}`
+
+	// First request with Idempotency-Key.
+	req1, _ := http.NewRequest("POST", ts.URL+"/v1/jobs/enqueue", bytes.NewBufferString(body))
+	req1.Header.Set("Content-Type", "application/json")
+	req1.Header.Set("Idempotency-Key", "client-retry-001")
+	resp1, err := http.DefaultClient.Do(req1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var r1 map[string]any
+	json.NewDecoder(resp1.Body).Decode(&r1)
+	resp1.Body.Close()
+	jobID1 := r1["job_id"].(string)
+
+	// Second request with same key — should return same job_id.
+	req2, _ := http.NewRequest("POST", ts.URL+"/v1/jobs/enqueue", bytes.NewBufferString(body))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("Idempotency-Key", "client-retry-001")
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var r2 map[string]any
+	json.NewDecoder(resp2.Body).Decode(&r2)
+	resp2.Body.Close()
+	jobID2 := r2["job_id"].(string)
+
+	if jobID1 != jobID2 {
+		t.Fatalf("idempotency key returned different job IDs: %s vs %s", jobID1, jobID2)
+	}
+
+	// Third request with different key — should create a new job.
+	req3, _ := http.NewRequest("POST", ts.URL+"/v1/jobs/enqueue", bytes.NewBufferString(body))
+	req3.Header.Set("Content-Type", "application/json")
+	req3.Header.Set("Idempotency-Key", "client-retry-002")
+	resp3, err := http.DefaultClient.Do(req3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var r3 map[string]any
+	json.NewDecoder(resp3.Body).Decode(&r3)
+	resp3.Body.Close()
+	jobID3 := r3["job_id"].(string)
+
+	if jobID3 == jobID1 {
+		t.Fatal("different idempotency key should create different job")
+	}
+}

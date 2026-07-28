@@ -377,3 +377,69 @@ func nullIfEmpty(s string) *string {
 	}
 	return &s
 }
+
+// EnqueueIdempotent creates a job only if the idempotency key hasn't been used (B5-010).
+func (s *Storage) EnqueueIdempotent(ctx context.Context, queue string, job *domain.Job) (string, bool, error) {
+	key := job.IdempotencyKey
+
+	if key != "" {
+		var existing string
+		err := s.pool.QueryRow(ctx,
+			`SELECT id FROM gfire.jobs WHERE idempotency_key = $1`, key,
+		).Scan(&existing)
+		if err == nil {
+			return existing, false, nil
+		}
+	}
+
+	// Add idempotency_key to the INSERT.
+	if job.ID == "" {
+		job.ID = uuid.NewString()
+	}
+	if queue == "" {
+		queue = "default"
+	}
+	job.Queue = queue
+	if job.RetryMax == 0 {
+		job.RetryMax = 10
+	}
+	if job.Args == nil {
+		job.Args = []byte("[]")
+	}
+	now := time.Now().UTC()
+	job.CreatedAt = now
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return "", false, fmt.Errorf("enqueue begin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO gfire.jobs (id, name, args, queue, state, retry_max, timeout_ms, idempotency_key, created_at, updated_at)
+		VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9, $9)`,
+		job.ID, job.Name, job.Args, job.Queue, domain.StateEnqueued,
+		job.RetryMax, timeoutMS(job.Timeout), nullIfEmpty(key), now,
+	)
+	if err != nil {
+		return "", false, fmt.Errorf("enqueue insert job: %w", err)
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO gfire.job_states (job_id, name, created_at)
+		VALUES ($1, $2, $3)`,
+		job.ID, domain.StateEnqueued, now,
+	)
+	if err != nil {
+		return "", false, fmt.Errorf("enqueue insert state: %w", err)
+	}
+
+	if err := bumpCounter(ctx, tx, "enqueued", 1); err != nil {
+		return "", false, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return "", false, err
+	}
+	return job.ID, true, nil
+}

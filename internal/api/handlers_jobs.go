@@ -61,7 +61,18 @@ func (s *Server) handleEnqueue(w http.ResponseWriter, r *http.Request) {
 		}
 		job.Timeout = d
 	}
-	id, err := s.store.Enqueue(r.Context(), queue, job)
+
+	// B5-010: Idempotency-Key header for client retry deduplication.
+	idemKey := r.Header.Get("Idempotency-Key")
+	job.IdempotencyKey = idemKey
+
+	var id string
+	var err error
+	if idemKey != "" {
+		id, _, err = s.store.EnqueueIdempotent(r.Context(), queue, job)
+	} else {
+		id, err = s.store.Enqueue(r.Context(), queue, job)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -102,6 +113,9 @@ func (s *Server) handleBatchEnqueue(w http.ResponseWriter, r *http.Request) {
 	var accepted []acceptedEntry
 	var rejected []rejectedEntry
 
+	// B5-010: batch Idempotency-Key → each job gets key:index.
+	batchIdemKey := r.Header.Get("Idempotency-Key")
+
 	for i, jr := range req.Jobs {
 		if jr.Name == "" {
 			rejected = append(rejected, rejectedEntry{Name: jr.Name, Reason: "name is required", Index: i})
@@ -124,9 +138,21 @@ func (s *Server) handleBatchEnqueue(w http.ResponseWriter, r *http.Request) {
 			}
 			job.Timeout = d
 		}
-		id, err := s.store.Enqueue(r.Context(), queue, job)
-		if err != nil {
-			rejected = append(rejected, rejectedEntry{Name: jr.Name, Reason: "enqueue failed: " + err.Error(), Index: i})
+
+		// Set per-job idempotency key from batch header.
+		if batchIdemKey != "" {
+			job.IdempotencyKey = fmt.Sprintf("%s:%d", batchIdemKey, i)
+		}
+
+		var id string
+		var enqErr error
+		if job.IdempotencyKey != "" {
+			id, _, enqErr = s.store.EnqueueIdempotent(r.Context(), queue, job)
+		} else {
+			id, enqErr = s.store.Enqueue(r.Context(), queue, job)
+		}
+		if enqErr != nil {
+			rejected = append(rejected, rejectedEntry{Name: jr.Name, Reason: "enqueue failed: " + enqErr.Error(), Index: i})
 			continue
 		}
 		accepted = append(accepted, acceptedEntry{JobID: id, Name: jr.Name, Queue: queue})

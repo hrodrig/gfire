@@ -5,14 +5,15 @@ import "time"
 // Job is the unit of work. It carries the job name, serialized arguments,
 // and metadata. Jobs are created via the HTTP API and stored by the Storage backend.
 type Job struct {
-	ID        string        `json:"id"`
-	Name      string        `json:"name"`
-	Args      []byte        `json:"args"`
-	Queue     string        `json:"queue"`
-	RetryMax  int           `json:"retry_max,omitempty"`
-	Timeout   time.Duration `json:"timeout,omitempty"` // max execution time (0 = config default)
-	CreatedAt time.Time     `json:"created_at"`
-	Result    []byte        `json:"result,omitempty"` // handler stdout JSON, cap 64KB (B3-011)
+	ID             string        `json:"id"`
+	Name           string        `json:"name"`
+	Args           []byte        `json:"args"`
+	Queue          string        `json:"queue"`
+	RetryMax       int           `json:"retry_max,omitempty"`
+	Timeout        time.Duration `json:"timeout,omitempty"`         // max execution time (0 = config default)
+	IdempotencyKey string        `json:"idempotency_key,omitempty"` // B5-010: client retry dedupe
+	CreatedAt      time.Time     `json:"created_at"`
+	Result         []byte        `json:"result,omitempty"` // handler stdout JSON, cap 64KB (B3-011)
 }
 
 // JobState represents an immutable node in the job's lifecycle.

@@ -446,3 +446,29 @@ func (s *Storage) DeleteJob(ctx context.Context, jobID string) error {
 	}
 	return nil
 }
+
+// EnqueueIdempotent creates a job only if the idempotency key hasn't been used (B5-010).
+func (s *Storage) EnqueueIdempotent(ctx context.Context, queue string, job *domain.Job) (string, bool, error) {
+	key := job.IdempotencyKey
+
+	if key != "" {
+		ikey := keyPrefix + "idempotency:" + key
+		existing, err := s.client.Get(ctx, ikey).Result()
+		if err == nil && existing != "" {
+			return existing, false, nil
+		}
+	}
+
+	// Regular enqueue.
+	id, err := s.Enqueue(ctx, queue, job)
+	if err != nil {
+		return "", false, err
+	}
+
+	if key != "" {
+		ikey := keyPrefix + "idempotency:" + key
+		s.client.Set(ctx, ikey, id, 0) // persist forever
+	}
+
+	return id, true, nil
+}

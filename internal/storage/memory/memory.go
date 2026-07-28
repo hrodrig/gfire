@@ -36,6 +36,7 @@ type Storage struct {
 	counters      map[string]int64
 	locks         map[string]*memoryLock
 	dequeueCh     chan struct{}
+	idempotency   map[string]string // B5-010: key → jobID
 }
 
 // New creates a new empty in-memory Storage.
@@ -54,6 +55,7 @@ func New() *Storage {
 		counters:      make(map[string]int64),
 		locks:         make(map[string]*memoryLock),
 		dequeueCh:     make(chan struct{}, 1),
+		idempotency:   make(map[string]string),
 	}
 }
 
@@ -656,3 +658,53 @@ func (s *Storage) DeleteJob(ctx context.Context, jobID string) error {
 }
 
 func (s *Storage) Close() error { return nil }
+
+// EnqueueIdempotent creates a job only if the idempotency key hasn't been used (B5-010).
+func (s *Storage) EnqueueIdempotent(ctx context.Context, queue string, job *domain.Job) (string, bool, error) {
+	key := job.IdempotencyKey
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if key != "" {
+		if existing, ok := s.idempotency[key]; ok {
+			return existing, false, nil
+		}
+	}
+
+	// Fall back to regular enqueue logic (inlined for atomicity under the same lock).
+	if job.ID == "" {
+		job.ID = uuid.NewString()
+	}
+	job.CreatedAt = time.Now()
+	if job.Queue == "" {
+		job.Queue = "default"
+	}
+	if job.RetryMax == 0 {
+		job.RetryMax = 10
+	}
+
+	s.jobs[job.ID] = job
+	s.jobStates[job.ID] = []*domain.JobState{{
+		Name:      domain.StateEnqueued,
+		CreatedAt: time.Now(),
+	}}
+	s.queueTokens[job.ID] = time.Now().UnixNano()
+
+	if s.queues[queue] == nil {
+		s.queues[queue] = list.New()
+	}
+	s.queues[queue].PushBack(job.ID)
+
+	s.counters["enqueued"]++
+
+	if key != "" {
+		s.idempotency[key] = job.ID
+	}
+
+	select {
+	case s.dequeueCh <- struct{}{}:
+	default:
+	}
+	return job.ID, true, nil
+}
