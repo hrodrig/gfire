@@ -160,6 +160,5 @@ logging:
 metrics:
 
   # When enabled, exposes GET /metrics in Prometheus text
-  # format. Note: the /metrics endpoint is planned for a
-  # future band (v1.0.0).
+  # format (v1.0.0).
   enabled: true                       # default: true

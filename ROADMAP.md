@@ -218,7 +218,7 @@ GFire uses **shared-state coordination**, not leader election. All nodes are pee
 | **B3-011** Job result capture — stdout → `SetJobResult` (cap 64KB)               | ✅      |
 | **B3-012** Dead (DLQ) state — after `retry_max` exhausted                        | ✅      |
 | `ScheduleRetry` + `SetJobResult` on Storage interface (31 methods total)         | ✅      |
-| SIGINT/SIGTERM signal wiring in `cmd/gfire server`                               | ⬜ Band 6 |
+| SIGINT/SIGTERM signal wiring in `cmd/gfire server`                               | ✅ Band 6 |
 
 
 **Handler model note:** one subprocess per job adds ~100–500ms startup. Fine for minute/hour jobs (SAP ETL); poor for sub-50ms micro-tasks. Long-lived handler pool is post-v1 (see deferred list below).
@@ -270,9 +270,9 @@ Engine.Stop():
 
 
 
-## Band 4 — Scheduler + Recurring + Continuations (Week 5–6) — partial ✅
+## Band 4 — Scheduler + Recurring + Continuations (Week 5–6) ✅
 
-> Time-based and conditional job execution. **v0.6.0 ships continuations + coordinator; recurring cron deferred to v0.5.0 tag.**
+> Time-based and conditional job execution. Continuations, coordinator, recurring cron, and stale server sweep ship in v1.0.0.
 
 
 | Deliverable                                                                | Status |
@@ -291,9 +291,9 @@ Engine.Stop():
 
 
 
-## Band 5 — REST API (Week 6–7) — core ✅
+## Band 5 — REST API (Week 6–7) ✅
 
-> HTTP API so applications can talk to GFire. **v0.6.0 = curl-usable core; B5-009, B5-010, B5-013 deferred.**
+> HTTP API so applications can talk to GFire. Full surface ships in v1.0.0 (core routes since v0.6.0; B5-009/010/013/014 + recurring CRUD completed for v1.0.0).
 
 
 | Deliverable                                                | Status |
@@ -316,9 +316,9 @@ Engine.Stop():
 
 
 
-## Band 6 — CLI + Monitoring (Week 7) — core ✅
+## Band 6 — CLI + Monitoring (Week 7) ✅
 
-> CLI for server management. **v0.6.0 ships server + job inspect; metrics/migrate deferred.**
+> CLI for server management. Server + job inspect since v0.6.0; migrate/queue/status, Prometheus `/metrics`, and dead filter complete in v1.0.0.
 
 
 | Deliverable                                                     | Status |
@@ -331,21 +331,20 @@ Engine.Stop():
 | **B6-009–011** dead filter, CLI cancel, dead metric | ✅ |
 
 
-**🔑 v0.6.0 CLI milestone** — `gfire server` + job inspect ✅
+**🔑 v0.6.0 CLI milestone** — `gfire server` + job inspect ✅ · **v1.0.0** — migrate/queue/status + metrics + dead filter ✅
 
-**Route table (implemented in v0.6.0 unless noted):**
+**Route table (v1.0.0):**
 
 ```
 POST   /v1/jobs/enqueue, /schedule, GET /v1/jobs, GET /v1/jobs/{id}
-POST   /v1/jobs/{id}/requeue, /cancel, /continue
+POST   /v1/jobs/{id}/requeue, /cancel, /continue, /delete
+POST   /v1/jobs/enqueue/batch
 GET    /v1/queues, /v1/queues/{name}, GET /v1/servers
-GET    /healthz, /readyz
-POST   /v1/jobs/enqueue/batch, GET /openapi.json, /v1/recurring/*  → planned
-POST   /v1/jobs/{id}/delete                                         → planned (B5-014)
-GET    /metrics                                                   → planned
+GET    /v1/recurring, POST /v1/recurring, DELETE /v1/recurring/{id}, POST /v1/recurring/{id}/trigger
+GET    /healthz, /readyz, /metrics, /openapi.json
 ```
 
-**Band 4 notes (recurring — planned v0.5.0):** robfig/cron + lock `recurring:<id>`; scheduler poll already in engine.
+**Band 4 notes (recurring):** robfig/cron + lock `recurring:<id>`; scheduler poll in engine.
 
 **Band 6 config reference:** see `gfire.example.yaml` and SPEC §8.
 
@@ -376,6 +375,8 @@ GET    /metrics                                                   → planned
 
 
 **🔑 v1.0.0** — "Production-ready." ✅
+
+**Shipped v1.0.0** — Bands 0–7 complete: storage backends, engine, scheduler/recurring/continuations, full REST API, CLI + Prometheus, Docker, E2E, release docs.
 
 **Shipped v0.6.1** — B7-001–003: constant-time Bearer auth, scheduler tick clarity, shutdown GetJob fix (MiniMax audit).
 
@@ -439,10 +440,10 @@ Week 1  │ Band 0 ─ Foundation                      ✅ v0.1.0
 Week 2-3│ Band 1 ─ PostgreSQL                       ✅ v0.2.0
 Week 3-4│ Band 2 ─ Redis / ValKey                   ✅ v0.3.0
 Week 4-5│ Band 3 ─ Engine: workers + middleware      ✅ v0.4.0
-Week 5-6│ Band 4 ─ Scheduler + recurring + cont.    ▶ partial (v0.6.0)
-Week 6-7│ Band 5 ─ REST API (core)                  ✅ v0.6.0
-Week 7  │ Band 6 ─ CLI (core)                       ✅ v0.6.0
-Week 8  │ Band 7 ─ Polish, Docker, release          ⬜ v1.0.0
+Week 5-6│ Band 4 ─ Scheduler + recurring + cont.    ✅ v1.0.0
+Week 6-7│ Band 5 ─ REST API                         ✅ v1.0.0
+Week 7  │ Band 6 ─ CLI + monitoring                 ✅ v1.0.0
+Week 8  │ Band 7 ─ Polish, Docker, release          ✅ v1.0.0
 Post    │ Band 8 ─ Pipelines (DAG)                  ⬜ v1.1.0
 ```
 

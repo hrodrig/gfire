@@ -1,6 +1,6 @@
 # GFire — Standalone Background Job Service
 
-**Status:** Live design (aligned with ROADMAP — headless v1)
+**Status:** Live design (aligned with ROADMAP — headless v1.0.0)
 **Language:** Go
 **Storage backends:** Redis, ValKey, PostgreSQL
 **Home:** `github.com/hrodrig/gfire`
@@ -202,7 +202,7 @@ sequenceDiagram
 
 Your application never imports GFire. It sends HTTP requests to the GFire server.
 
-> **Implementation status:** Core routes ship in v0.6.0. Items marked **(planned)** are specified for contract tests; see ROADMAP IDs `B5-009`, `B5-010`, `B5-013`, `B5-014`.
+> **Implementation status:** Full REST surface ships in v1.0.0 (Bands 5–6). See ROADMAP for band history.
 
 ### Base URL
 
@@ -220,21 +220,21 @@ http://gfire:8080/v1
 
 ```
 POST   /v1/jobs/enqueue              → { job_id, status }
-POST   /v1/jobs/enqueue/batch        → { job_ids[], accepted, rejected }   # planned B5-009
+POST   /v1/jobs/enqueue/batch        → { job_ids[], accepted, rejected }   # B5-009
 POST   /v1/jobs/schedule             → { job_id, enqueue_at, status }
 GET    /v1/jobs/{id}                  → job detail + state history + result?
 GET    /v1/jobs                      → paginated, filterable (?state=&queue=&limit=&offset=)
 POST   /v1/jobs/{id}/requeue         → { status }
-POST   /v1/jobs/{id}/cancel          → { status }                            # v0.6.0 (B5-011)
-POST   /v1/jobs/{id}/delete          → { status }                            # planned
+POST   /v1/jobs/{id}/cancel          → { status }                            # B5-011
+POST   /v1/jobs/{id}/delete          → { status }                            # B5-014
 ```
 
 **Headers (enqueue / batch):**
 
 | Header            | Required | Purpose |
 | ----------------- | -------- | ------- |
-| `Idempotency-Key` | No       | Client retry dedupe — same key returns same `job_id` **(planned B5-010)** |
-| `Authorization`   | When `auth.enabled` | `Bearer <token>` **(v0.6.0, B5-012)** |
+| `Idempotency-Key` | No       | Client retry dedupe — same key returns same `job_id` **(B5-010)** |
+| `Authorization`   | When `auth.enabled` | `Bearer <token>` **(B5-012)** |
 
 **Enqueue request:**
 
@@ -260,7 +260,7 @@ POST   /v1/jobs/{id}/delete          → { status }                            #
 }
 ```
 
-**Bulk enqueue request (planned B5-009):**
+**Bulk enqueue request (B5-009):**
 
 ```json
 {
@@ -307,7 +307,7 @@ POST   /v1/recurring/{id}/trigger    → fire immediately, outside schedule
 #### Discovery
 
 ```
-GET    /openapi.json                 → OpenAPI 3 document for all /v1/* routes   # planned B5-013
+GET    /openapi.json                 → OpenAPI 3 document for all /v1/* routes   # B5-013
 GET    /healthz                      → { status: "ok" }
 GET    /readyz                       → { status: "ok" } (storage reachable)
 GET    /metrics                      → Prometheus text (when metrics.enabled)
@@ -1162,7 +1162,7 @@ const (
 4. For each matching continuation: enqueue child job (normal `Enqueue` call)
 5. Child runs like any other job — it's a regular job, just enqueued by continuation logic
 
-**Parent result (planned Band 4):** when the parent has a stored `Result` (B3-011), continuation dispatch may merge it into the child args (e.g. under `_parent_result`) so chains pass data, not just triggers.
+**Parent result (Band 4):** when the parent has a stored `Result` (B3-011), continuation dispatch merges it into the child args under `_parent_result` so chains pass data, not just triggers.
 
 
 
@@ -1507,7 +1507,7 @@ Separate React project. Talks only to the public REST API. Not part of the `gfir
 gfire_jobs_enqueued_total{queue}
 gfire_jobs_succeeded_total{queue}
 gfire_jobs_failed_total{queue}
-gfire_jobs_dead_total{queue}              # poison / DLQ — planned B6-011
+gfire_jobs_dead_total{queue}              # poison / DLQ — B6-011
 gfire_jobs_duration_seconds{queue,name}   # histogram
 gfire_workers_active{server_id}
 gfire_queue_depth{queue}

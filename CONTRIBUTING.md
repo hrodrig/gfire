@@ -38,9 +38,9 @@ Keep commits scoped and messages understandable.
 
 Repository content (code, comments, docs, UI strings) should be **English**.
 
-## Early development note
+## Development note
 
-GFire is **v0.3.0** (Band 2 — Redis/ValKey). APIs and layout will still change. Prefer small PRs and discuss large design changes in an issue first.
+GFire is **v1.0.0**. Prefer small PRs; discuss large design changes (e.g. Band 8 pipelines) in an issue first.
 
 ## Questions
 

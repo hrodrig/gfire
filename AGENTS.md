@@ -6,7 +6,7 @@ This file tells AI agents (Cline, Claude Code, Copilot, etc.) how to work with t
 
 - **Go module:** `github.com/hrodrig/gfire`
 - **Language:** Go 1.26.5
-- **Status:** Early development (pre-v1.0.0)
+- **Status:** v1.0.0 (production-ready)
 - **License:** MIT (core)
 
 ## Coding Standards

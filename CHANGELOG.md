@@ -16,6 +16,10 @@ First **production-ready** release. All Band 0–7 delivered.
 - **Band 6 (complete):** `gfire migrate`, `gfire queue list`, `gfire server status` CLI commands; `gfire job cancel` via REST API; Prometheus `GET /metrics` endpoint; dead filter via `--state`.
 - **Band 7 (complete):** B7-004 worker exponential backoff, B7-005 config validation on load, B7-006 requeue terminal-state guard, real HTTP server shutdown, request-ID middleware, `gfire.example.yaml` fully documented, README rewrite with curl cookbook and config reference, E2E test suite (20 steps, postgres backend).
 
+### Changed
+
+- Docs sync: SPEC/ROADMAP/README/example YAML mark B5–B6 surfaces as shipped (remove stale "planned" markers); README version badge and status → v1.0.0.
+
 ### Security
 
 - B7-001: Bearer token constant-time compare (`crypto/subtle.ConstantTimeCompare`).

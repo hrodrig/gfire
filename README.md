@@ -4,7 +4,7 @@
 
 **🔥** _Language-agnostic job orchestration over HTTP — PostgreSQL, Redis, or ValKey_
 
-[![Version](https://img.shields.io/badge/version-0.6.1-blue)](./VERSION)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue)](./VERSION)
 [![Go](https://img.shields.io/badge/Go-1.26.5-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Status](https://img.shields.io/badge/status-production-blue)](#)
@@ -18,7 +18,7 @@
 
 GFire is a **headless background job service**: a standalone Go binary that runs a REST API and worker pool. Applications enqueue work over HTTP — they never import GFire as a library. Workers spawn external handler processes (`cmd`) against shared storage (**PostgreSQL**, **Redis**, or **ValKey**).
 
-> **Early development (v0.6.1 — usable preview).** Run `gfire server`, enqueue via **curl**, inspect with CLI. Not production-hardened — see [ROADMAP.md](ROADMAP.md).
+> **v1.0.0 — production-ready.** Run `gfire server`, enqueue via **curl**, inspect with CLI. See [ROADMAP.md](ROADMAP.md) for post-v1 work (pipelines, GFireUI).
 
 ## Table of contents
 
@@ -26,7 +26,7 @@ GFire is a **headless background job service**: a standalone Go binary that runs
 - [Config reference](#config-reference)
 - [Curl cookbook](#curl-cookbook)
 - [Current status](#current-status)
-- [What GFire will be](#what-gfire-will-be)
+- [What GFire is](#what-gfire-is)
 - [Architecture](#architecture)
 - [Requirements](#requirements)
 - [Development](#development)
@@ -197,21 +197,20 @@ curl -sS http://127.0.0.1:8080/v1/servers         # active servers in cluster
 
 ## Current status
 
-v0.6.1 — usable preview. Server, REST API, CLI, all three storage backends.
+v1.0.0 — production-ready. Server, REST API, CLI, Prometheus metrics, all three storage backends.
 
 | Component | Status |
 |-----------|--------|
 | Storage (memory, PostgreSQL, Redis/ValKey) | ✅ |
 | Engine (workers, retry, cancel, DLQ, result capture) | ✅ |
-| Continuations (chaining) + orphan recovery | ✅ |
-| REST API (enqueue, schedule, list, cancel, continue, requeue) | ✅ |
-| CLI (`gfire server`, `gfire job list/get/requeue`) | ✅ |
-| Bearer auth, request IDs, rate-limited worker backoff | ✅ |
-| Recurring cron, bulk enqueue, OpenAPI, `/metrics` | ⬜ next bands |
+| Continuations + recurring cron + orphan recovery | ✅ |
+| REST API (enqueue, batch, schedule, list, cancel, continue, requeue, delete, recurring) | ✅ |
+| CLI (`gfire server`, job, migrate, queue, status) | ✅ |
+| Bearer auth, OpenAPI (`/openapi.json`), Prometheus (`/metrics`) | ✅ |
 
 [↑ Back to top](#readme-top)
 
-## What GFire will be
+## What GFire is
 
 - **Headless service** — single binary, no embedded UI in v1
 - **HTTP + curl** — apps never import GFire as a Go library
@@ -302,7 +301,7 @@ GFIRE_STORAGE_REDIS_ADDR=localhost:6380 ./bin/gfire server
 
 ## Compare
 
-Snapshot v0.6.1. GFire is a standalone service (HTTP API); the rest are embedded Go libraries.
+Snapshot v1.0.0. GFire is a standalone service (HTTP API); the rest are embedded Go libraries.
 
 | Axis | GFire | Asynq | River |
 |------|-------|-------|-------|
