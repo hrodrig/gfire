@@ -33,6 +33,9 @@ func NewRoot(version string) *cobra.Command {
 	root.AddCommand(newVersionCmd(version))
 	root.AddCommand(newServerCmd())
 	root.AddCommand(newJobCmd())
+	root.AddCommand(newQueueCmd())
+	root.AddCommand(newMigrateCmd())
+	root.AddCommand(newServerStatusCmd())
 	return root
 }
 
