@@ -307,7 +307,7 @@ Engine.Stop():
 | Recurring CRUD handlers | ✅ |
 | **B5-009** bulk enqueue | ✅ |
 | **B5-010** Idempotency-Key | ✅ |
-| **B5-013** OpenAPI                                         | ⬜      |
+| **B5-013** OpenAPI | ✅ |
 
 
 **🔑 v0.6.0** — "Enqueue and inspect jobs via curl." ✅

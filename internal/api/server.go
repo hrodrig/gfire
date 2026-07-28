@@ -84,6 +84,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /v1/queues", s.handleListQueues)
 	s.mux.HandleFunc("GET /v1/queues/{name}", s.handleGetQueue)
 	s.mux.HandleFunc("GET /v1/servers", s.handleListServers)
+	s.mux.HandleFunc("GET /openapi.json", s.handleOpenAPI)
 	s.mux.HandleFunc("GET /v1/recurring", s.handleListRecurring)
 	s.mux.HandleFunc("POST /v1/recurring", s.handleCreateRecurring)
 	s.mux.HandleFunc("DELETE /v1/recurring/{id}", s.handleDeleteRecurring)
