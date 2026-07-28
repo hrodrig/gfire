@@ -11,7 +11,7 @@ import (
 )
 
 func newServerStatusCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show server cluster status",
 		RunE: func(_ *cobra.Command, _ []string) error {
@@ -52,4 +52,6 @@ func newServerStatusCmd() *cobra.Command {
 			return w.Flush()
 		},
 	}
+	cmd.Flags().StringVar(&cfgFile, "config", "", "path to gfire.yaml")
+	return cmd
 }

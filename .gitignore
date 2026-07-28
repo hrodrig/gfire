@@ -42,6 +42,9 @@
 !internal/
 !internal/**/
 !internal/**/*
+!test/
+!test/**/
+!test/**/*
 
 # ── Dotfiles/dotdirs (re-ignore after !*/) ──
 .*

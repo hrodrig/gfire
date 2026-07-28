@@ -36,9 +36,9 @@ DOCKER_BUILD_ARGS := \
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all build version test cover fmt fmt-check lint-fix lint vet clean install server \
-	docker-build docker-scan govulncheck vulncheck ci gocyclo grype security release-check snapshot \
-	db-up db-down db-psql migrate-up migrate-down migrate-create
+.PHONY: help all build version test cover fmt fmt-check lint-fix lint vet clean install server \\
+	docker-build docker-scan govulncheck vulncheck ci gocyclo grype security release-check snapshot \\
+	db-up db-down db-psql migrate-up migrate-down migrate-create e2e
 
 help:
 	@echo "Available targets:"
@@ -68,6 +68,7 @@ help:
 	@echo "  make db-down        Stop compose stack"
 	@echo "  make migrate-up     Apply PostgreSQL migrations"
 	@echo "  make migrate-down   Roll back one migration"
+	@echo "  make e2e            Run end-to-end tests (postgres + curl + CLI)"
 	@echo "  Redis tests: make db-up && go test ./internal/storage/redis/ -count=1"
 	@echo ""
 	@echo "Variables:"
@@ -233,3 +234,7 @@ migrate-up:
 
 migrate-down:
 	migrate -path $(MIGRATE_PATH) -database "$(PG_DSN)" down 1
+
+e2e:
+	@echo "Running E2E tests (requires docker + migrate CLI)..."
+	bash test/e2e/run.sh

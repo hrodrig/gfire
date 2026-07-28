@@ -370,7 +370,7 @@ GET    /metrics                                                   → planned
 | `gfire.example.yaml` — Documented example config | 1 day | ✅ |
 | `README.md` — Quick start, curl examples, config reference | 1 day | ✅ |
 | Observability: structured logging (slog), request IDs | 1 day | ✅ (request IDs) |
-| End-to-end test: docker-compose → curl jobs → verify via CLI | 1 day | ⬜ |
+| End-to-end test: docker-compose → curl jobs → verify via CLI | 1 day | ✅ |
 | Helm chart for AKS deployment (optional) | 2 days | ⬜ |
 | `v1.0.0` tag + release notes | — | ⬜ |
 
