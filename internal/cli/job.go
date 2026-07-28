@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -15,6 +18,7 @@ func newJobCmd() *cobra.Command {
 	cmd.AddCommand(newJobListCmd())
 	cmd.AddCommand(newJobGetCmd())
 	cmd.AddCommand(newJobRequeueCmd())
+	cmd.AddCommand(newJobCancelCmd())
 	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "path to gfire.yaml")
 	return cmd
 }
@@ -97,6 +101,36 @@ func newJobRequeueCmd() *cobra.Command {
 			}
 			defer store.Close()
 			return store.Requeue(ctx, args[0], "cli requeue")
+		},
+	}
+}
+
+func newJobCancelCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "cancel [job-id]",
+		Short: "Cancel an in-flight job (calls REST API)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			c, err := loadConfig()
+			if err != nil {
+				return err
+			}
+			url := fmt.Sprintf("http://%s/v1/jobs/%s/cancel", c.ListenAddr(), args[0])
+			req, err := http.NewRequest(http.MethodPost, url, nil)
+			if err != nil {
+				return err
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				return fmt.Errorf("cancel request failed: %w (is the server running?)", err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
+				return fmt.Errorf("cancel failed (status %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+			}
+			fmt.Printf("Job %s: cancel request sent.\n", args[0])
+			return nil
 		},
 	}
 }

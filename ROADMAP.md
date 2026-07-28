@@ -328,7 +328,7 @@ Engine.Stop():
 | `gfire job list/get/requeue`                                    | ✅      |
 | `gfire migrate`, `gfire queue list`, `gfire server status` | ✅ |
 | Prometheus `GET /metrics` | ✅ |
-| **B6-009–011** dead filter, CLI cancel, dead metric             | ⬜      |
+| **B6-009–011** dead filter, CLI cancel, dead metric | ✅ |
 
 
 **🔑 v0.6.0 CLI milestone** — `gfire server` + job inspect ✅
