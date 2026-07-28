@@ -7,7 +7,7 @@
 [![Version](https://img.shields.io/badge/version-0.6.1-blue)](./VERSION)
 [![Go](https://img.shields.io/badge/Go-1.26.5-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
-[![Status](https://img.shields.io/badge/status-early%20development-orange)](#early-development--not-for-production)
+[![Status](https://img.shields.io/badge/status-production-blue)](#)
 [![gghstats clones](https://gghstats.hermesrodriguez.com/api/v1/badge/hrodrig/gfire?metric=clones)](https://gghstats.hermesrodriguez.com/hrodrig/gfire)
 
 **Repo:** [github.com/hrodrig/gfire](https://github.com/hrodrig/gfire) · **Site:** [gfire.net](https://gfire.net) · **Spec:** [SPECIFICATIONS.md](SPECIFICATIONS.md) · **Roadmap:** [ROADMAP.md](ROADMAP.md) · **Security:** [SECURITY.md](SECURITY.md)

@@ -5,16 +5,26 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.0] - 2026-07-27
 
-### Planned
+First **production-ready** release. All Band 0–7 delivered.
 
-- **Pipelines (DAG)** — Band 8 / v1.1.0
-- Recurring cron API (v0.5.0 band), bulk enqueue, OpenAPI, job delete (B5-014), Prometheus `/metrics`
+### Added
+
+- **Band 4 (complete):** recurring cron (robfig/cron + distributed lock), stale server registry sweep with automatic unregister.
+- **Band 5 (complete):** job delete (B5-014), recurring CRUD handlers (list/create/delete/trigger), bulk enqueue with partial acceptance (B5-009), idempotency-key client retry deduplication (B5-010), OpenAPI 3.0 spec at `GET /openapi.json` (B5-013).
+- **Band 6 (complete):** `gfire migrate`, `gfire queue list`, `gfire server status` CLI commands; `gfire job cancel` via REST API; Prometheus `GET /metrics` endpoint; dead filter via `--state`.
+- **Band 7 (complete):** B7-004 worker exponential backoff, B7-005 config validation on load, B7-006 requeue terminal-state guard, real HTTP server shutdown, request-ID middleware, `gfire.example.yaml` fully documented, README rewrite with curl cookbook and config reference, E2E test suite (20 steps, postgres backend).
+
+### Security
+
+- B7-001: Bearer token constant-time compare (`crypto/subtle.ConstantTimeCompare`).
+- Bump `golang.org/x/text` v0.29.0 → v0.39.0 (closes GO-2026-5970).
 
 ### Fixed
 
-- SPEC/ROADMAP sync post-Hermes audit: Storage 31 methods, Result B3-011 implemented, cancel/auth marked shipped, delete tracked as B5-014
+- B7-002: Scheduler tick renamed and documented.
+- B7-003: Post-dequeue `GetJob` uses detached context on shutdown.
 
 ## [0.6.1] - 2026-07-11
 
@@ -88,7 +98,8 @@ Band 1 milestone — PostgreSQL backend works.
 
 - No production-ready engine, REST API, or CLI beyond `gfire version`. Storage foundation only.
 
-[Unreleased]: https://github.com/hrodrig/gfire/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/hrodrig/gfire/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/hrodrig/gfire/compare/v0.6.1...v1.0.0
 [0.6.1]: https://github.com/hrodrig/gfire/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/hrodrig/gfire/compare/v0.4.0...v0.6.0
 [0.3.0]: https://github.com/hrodrig/gfire/compare/v0.2.0...v0.3.0

@@ -372,10 +372,10 @@ GET    /metrics                                                   → planned
 | Observability: structured logging (slog), request IDs | 1 day | ✅ (request IDs) |
 | End-to-end test: docker-compose → curl jobs → verify via CLI | 1 day | ✅ |
 | Helm chart for AKS deployment (optional) | 2 days | ⬜ |
-| `v1.0.0` tag + release notes | — | ⬜ |
+| `v1.0.0` tag + release notes | — | ✅ |
 
 
-**🔑 v1.0.0** — "Production-ready. Deploy on AKS. Monitoring via Prometheus + Grafana + CLI."
+**🔑 v1.0.0** — "Production-ready." ✅
 
 **Shipped v0.6.1** — B7-001–003: constant-time Bearer auth, scheduler tick clarity, shutdown GetJob fix (MiniMax audit).
 
