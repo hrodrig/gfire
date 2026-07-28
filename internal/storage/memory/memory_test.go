@@ -265,6 +265,47 @@ func TestStorage_DeleteJob(t *testing.T) {
 	})
 }
 
+func TestStorage_EnqueueIdempotent(t *testing.T) {
+	ctx := context.Background()
+	s := memory.New()
+
+	t.Run("creates on first call", func(t *testing.T) {
+		job := &domain.Job{Name: "idem-test", IdempotencyKey: "key-001"}
+		id, created, err := s.EnqueueIdempotent(ctx, "default", job)
+		if err != nil {
+			t.Fatalf("EnqueueIdempotent: %v", err)
+		}
+		if !created {
+			t.Fatal("expected created=true on first call")
+		}
+		if id == "" {
+			t.Fatal("expected non-empty job_id")
+		}
+	})
+
+	t.Run("returns existing on duplicate key", func(t *testing.T) {
+		first, _, _ := s.EnqueueIdempotent(ctx, "default", &domain.Job{Name: "first", IdempotencyKey: "key-002"})
+		second, created, _ := s.EnqueueIdempotent(ctx, "default", &domain.Job{Name: "second", IdempotencyKey: "key-002"})
+		if created {
+			t.Fatal("expected created=false on duplicate key")
+		}
+		if first != second {
+			t.Fatalf("expected same job_id, got %s vs %s", first, second)
+		}
+	})
+
+	t.Run("no key creates new job each time", func(t *testing.T) {
+		a, ca, _ := s.EnqueueIdempotent(ctx, "default", &domain.Job{Name: "a"})
+		b, cb, _ := s.EnqueueIdempotent(ctx, "default", &domain.Job{Name: "b"})
+		if !ca || !cb {
+			t.Fatal("expected created=true without idempotency key")
+		}
+		if a == b {
+			t.Fatal("expected different job_ids without key")
+		}
+	})
+}
+
 // TestStorage_ScheduledJob verifies scheduled jobs are moved
 // to the queue when their time arrives.
 func TestStorage_ScheduledJob(t *testing.T) {
