@@ -410,20 +410,23 @@ GET    /healthz, /readyz, /metrics, /openapi.json
 
 
 
-## Band 9 — Adoption (docs + deploy; post-v1)
+## Band 9 — Adoption (evidence first; post-v1)
 
-> Rescued from product review (Aug 2026 / GLM). Adoption risk is not technical — teams stick to in-process libraries unless the “why switch” is obvious. Framing: **multi-language same queue** and/or **strict enqueue/worker separation** (audit, security, independent scale). Do not block Band 8.
+> Rescued from product review (Aug 2026 / GLM), then tightened: **docs without a runnable proof are marketing noise.** Adoption risk is not technical — teams stick to in-process libraries unless they can *verify* the “why switch.” Framing: **multi-language same queue** and/or **strict enqueue/worker separation**. Do not block Band 8.
+>
+> **Rule:** each ADOPT ships a harness the outsider can run. README/guides only wrap that harness. Done = stranger reproduces the claim without asking us.
+
+| ID | Claim to prove | Harness (acceptance) | Docs wrap | Est. | Status |
+| --- | -------------- | -------------------- | --------- | ---- | ------ |
+| ADOPT-001 | Python + Go share one GFire queue | `examples/multilang/` (or compose profile): Python enqueues → Go handler runs → job `Succeeded`; one make/script target | Short README section pointing at the example | 1–1.5 days | ⬜ |
+| ADOPT-002 | Sidecar / k8s deploy works | `deploy/k8s/` (+ optional Helm): `kubectl apply` (or documented kind/minikube path) brings API up; enqueue + complete one job | README “Deploy” pointer | 2 days | ⬜ (was Band 7 Helm) |
+| ADOPT-003 | Numbers vs Asynq are not vibes | Reproducible bench script (fixed machine profile / docker) prints throughput + P99 for GFire and Asynq under same scenario | `docs/bench.md` (how to run + last published table) | 1–2 days | ⬜ |
+| ADOPT-004 | Path off Sidekiq / Celery is concrete | Guided migrate doc with **commands the reader runs** (map concepts → enqueue/handler → verify via CLI); not only compare matrix | `docs/migrate-from-*.md` | 1–1.5 days | ⬜ |
 
 
-| ID | Deliverable | Est. | Status |
-| --- | ----------- | ---- | ------ |
-| ADOPT-001 | Killer multi-lang example (Python enqueue + Go handler) in README / short tutorial | 0.5 day | ⬜ |
-| ADOPT-002 | Helm chart + `deploy/k8s/` sidecar manifests (`kubectl apply` path) | 2 days | ⬜ (was Band 7 Helm) |
-| ADOPT-003 | Public benches vs Asynq — throughput + P99, reproducible script + `docs/bench.md` | 1–2 days | ⬜ |
-| ADOPT-004 | Migration guides from Sidekiq / Celery (`docs/migrate-from-*.md`; compare matrix already ships) | 1 day | ⬜ |
+**Honest gaps today:** v1 E2E proves jobs work for operators. It does **not** prove multi-lang, sidecar, or fair benches. `docs/compare.md` is narrative, not a trial.
 
-
-**Priority if time-boxed:** ADOPT-001 → ADOPT-002 → ADOPT-004 → ADOPT-003.
+**Priority if time-boxed:** ADOPT-001 → ADOPT-002 → ADOPT-003 → ADOPT-004 (guides last — after something exists to migrate *to* with proof).
 
 **Depends on:** v1.0.0 (API, CLI, Docker, compare docs).
 
@@ -466,11 +469,11 @@ Week 6-7│ Band 5 ─ REST API                         ✅ v1.0.0
 Week 7  │ Band 6 ─ CLI + monitoring                 ✅ v1.0.0
 Week 8  │ Band 7 ─ Polish, Docker, release          ✅ v1.0.0
 Post    │ Band 8 ─ Pipelines (DAG)                  ⬜ v1.1.0
-Post    │ Band 9 ─ Adoption (docs + deploy)         ⬜
+Post    │ Band 9 ─ Adoption (evidence harnesses)    ⬜
 ```
 
 **Total:** ~8 weeks for one developer working consistently (v1.0.0).
-**Post-v1:** Band 8 adds headless DAG orchestration (~2 weeks). Band 9 is adoption polish (examples, Helm/sidecar, benches, migrate guides) — can run in parallel with or before Band 8.
+**Post-v1:** Band 8 adds headless DAG orchestration (~2 weeks). Band 9 is adoption *evidence* (runnable multi-lang, k8s apply, benches, migrate-with-commands) — can run in parallel with or before Band 8; docs alone do not close the band.
 **Deliverable (v1):** Single binary (`gfire`), REST API, CLI, Prometheus metrics, three storage backends, n+1 scaling without consensus. No embedded UI (GFireUI separate project).
 **Deliverable (v1.1):** Declarative pipelines with join, fan-out, and run-level completion barriers.
-**Deliverable (Band 9):** Clear “why switch” path — multi-lang demo, k8s apply, numbers, migrate guides.
+**Deliverable (Band 9):** Stranger can reproduce each adoption claim without asking us.
