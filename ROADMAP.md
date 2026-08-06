@@ -370,7 +370,7 @@ GET    /healthz, /readyz, /metrics, /openapi.json
 | `README.md` — Quick start, curl examples, config reference | 1 day | ✅ |
 | Observability: structured logging (slog), request IDs | 1 day | ✅ (request IDs) |
 | End-to-end test: docker-compose → curl jobs → verify via CLI | 1 day | ✅ |
-| Helm chart for AKS deployment (optional) | 2 days | ⬜ |
+| Helm chart for AKS deployment (optional) | 2 days | ⬜ → see **ADOPT-002** |
 | `v1.0.0` tag + release notes | — | ✅ |
 
 
@@ -405,6 +405,27 @@ GET    /healthz, /readyz, /metrics, /openapi.json
 **Depends on:** v1.0.0 (engine, API, continuations, storage backends).
 
 **🔑 v1.1.0** — "Headless DAG orchestration with join and fan-out barriers."
+
+---
+
+
+
+## Band 9 — Adoption (docs + deploy; post-v1)
+
+> Rescued from product review (Aug 2026 / GLM). Adoption risk is not technical — teams stick to in-process libraries unless the “why switch” is obvious. Framing: **multi-language same queue** and/or **strict enqueue/worker separation** (audit, security, independent scale). Do not block Band 8.
+
+
+| ID | Deliverable | Est. | Status |
+| --- | ----------- | ---- | ------ |
+| ADOPT-001 | Killer multi-lang example (Python enqueue + Go handler) in README / short tutorial | 0.5 day | ⬜ |
+| ADOPT-002 | Helm chart + `deploy/k8s/` sidecar manifests (`kubectl apply` path) | 2 days | ⬜ (was Band 7 Helm) |
+| ADOPT-003 | Public benches vs Asynq — throughput + P99, reproducible script + `docs/bench.md` | 1–2 days | ⬜ |
+| ADOPT-004 | Migration guides from Sidekiq / Celery (`docs/migrate-from-*.md`; compare matrix already ships) | 1 day | ⬜ |
+
+
+**Priority if time-boxed:** ADOPT-001 → ADOPT-002 → ADOPT-004 → ADOPT-003.
+
+**Depends on:** v1.0.0 (API, CLI, Docker, compare docs).
 
 ---
 
@@ -445,9 +466,11 @@ Week 6-7│ Band 5 ─ REST API                         ✅ v1.0.0
 Week 7  │ Band 6 ─ CLI + monitoring                 ✅ v1.0.0
 Week 8  │ Band 7 ─ Polish, Docker, release          ✅ v1.0.0
 Post    │ Band 8 ─ Pipelines (DAG)                  ⬜ v1.1.0
+Post    │ Band 9 ─ Adoption (docs + deploy)         ⬜
 ```
 
 **Total:** ~8 weeks for one developer working consistently (v1.0.0).
-**Post-v1:** Band 8 adds headless DAG orchestration (~2 weeks).
+**Post-v1:** Band 8 adds headless DAG orchestration (~2 weeks). Band 9 is adoption polish (examples, Helm/sidecar, benches, migrate guides) — can run in parallel with or before Band 8.
 **Deliverable (v1):** Single binary (`gfire`), REST API, CLI, Prometheus metrics, three storage backends, n+1 scaling without consensus. No embedded UI (GFireUI separate project).
 **Deliverable (v1.1):** Declarative pipelines with join, fan-out, and run-level completion barriers.
+**Deliverable (Band 9):** Clear “why switch” path — multi-lang demo, k8s apply, numbers, migrate guides.
