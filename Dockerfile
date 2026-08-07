@@ -17,7 +17,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath \
 	-ldflags="-s -w -X github.com/hrodrig/gfire/internal/version.Version=${APP_VERSION} -X github.com/hrodrig/gfire/internal/version.Commit=${GIT_COMMIT} -X github.com/hrodrig/gfire/internal/version.Branch=${GIT_BRANCH} -X github.com/hrodrig/gfire/internal/version.BuildDate=${BUILD_DATE}" \
 	-o /out/gfire ./cmd/gfire
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 WORKDIR /app
 COPY --from=builder /out/gfire /app/gfire
 USER nonroot:nonroot

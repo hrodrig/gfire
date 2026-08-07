@@ -3,7 +3,7 @@
 # linux/<arch>/<binary> in the build context.
 # Local multi-stage compile: use Dockerfile (make docker-build).
 ARG TARGETPLATFORM
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 ARG TARGETPLATFORM
 WORKDIR /app
 LABEL org.opencontainers.image.title="gfire"
