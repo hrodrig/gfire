@@ -7,10 +7,15 @@ import (
 	"time"
 
 	domain "github.com/hrodrig/gfire/internal/job"
+	"github.com/hrodrig/gfire/internal/version"
 )
 
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":  "ok",
+		"version": version.Version,
+		"commit":  version.Commit,
+	})
 }
 
 func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
