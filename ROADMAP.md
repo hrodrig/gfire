@@ -432,7 +432,22 @@ GET    /healthz, /readyz, /metrics, /openapi.json
 
 ---
 
+## Band 10 — Native packages (deb / rpm / systemd) (post-v1)
 
+> Family split (same as **gghstats**): **this repo** builds packages via GoReleaser `nfpms` and ships a systemd unit under `contrib/`. **[gfire-selfhosted](https://github.com/hrodrig/gfire-selfhosted)** only documents install paths (`GSH-040`–`042`) once artifacts exist on Releases — it does **not** build packages.
+
+| ID | Item | Notes | Status |
+| -- | ---- | ----- | ------ |
+| PKG-001 | GoReleaser `nfpms` → `.deb` + `.rpm` on tag `v*` | linux amd64/arm64; mirror gghstats layout | ⬜ |
+| PKG-002 | `contrib/systemd/gfire.service` (+ env example) | `server` under distroless-friendly paths; `EnvironmentFile=` | ⬜ |
+| PKG-003 | Package maintainer scripts (postinst/prerm as needed) | enable/disable unit; no surprise daemon start without docs | ⬜ |
+| PKG-004 | Homebrew formula (optional follow-up) | Unblocks selfhosted `GSH-040` | ⬜ |
+
+**Done when:** a release publishes `.deb`/`.rpm` (and unit inside package); `gfire-selfhosted` Band 4 can cite real asset names.
+
+**Depends on:** v1.0.x release pipeline (GoReleaser + GHCR already shipping archives).
+
+---
 
 ## Post-v1 enhancements (deferred — do not block v1.0.0)
 
@@ -470,10 +485,12 @@ Week 7  │ Band 6 ─ CLI + monitoring                 ✅ v1.0.0
 Week 8  │ Band 7 ─ Polish, Docker, release          ✅ v1.0.0
 Post    │ Band 8 ─ Pipelines (DAG)                  ⬜ v1.1.0
 Post    │ Band 9 ─ Adoption (evidence harnesses)    ⬜
+Post    │ Band 10 ─ Native packages (deb/rpm/systemd) ⬜
 ```
 
 **Total:** ~8 weeks for one developer working consistently (v1.0.0).
-**Post-v1:** Band 8 adds headless DAG orchestration (~2 weeks). Band 9 is adoption *evidence* (runnable multi-lang, k8s apply, benches, migrate-with-commands) — can run in parallel with or before Band 8; docs alone do not close the band.
+**Post-v1:** Band 8 adds headless DAG orchestration (~2 weeks). Band 9 is adoption *evidence* (runnable multi-lang, k8s apply, benches, migrate-with-commands) — can run in parallel with or before Band 8; docs alone do not close the band. Band 10 is native Linux packages + systemd (unblocks selfhosted Band 4).
 **Deliverable (v1):** Single binary (`gfire`), REST API, CLI, Prometheus metrics, three storage backends, n+1 scaling without consensus. No embedded UI (GFireUI separate project).
 **Deliverable (v1.1):** Declarative pipelines with join, fan-out, and run-level completion barriers.
 **Deliverable (Band 9):** Stranger can reproduce each adoption claim without asking us.
+**Deliverable (Band 10):** Releases attach `.deb`/`.rpm` with systemd unit; operators can `apt`/`dnf` + `systemctl enable --now gfire`.

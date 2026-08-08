@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- ROADMAP: Band 10 — native packages (`.deb`/`.rpm`/systemd via GoReleaser nfpms; `PKG-001`–`004`); unblocks gfire-selfhosted Band 4.
+
 ## [1.0.2] - 2026-08-08
 
 ### Added
