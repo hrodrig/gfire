@@ -7,9 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-08-08
+
 ### Fixed
 
 - Nested `GFIRE_*` environment variables (e.g. `GFIRE_STORAGE_BACKEND`, `GFIRE_STORAGE_POSTGRES_DSN`, `GFIRE_SERVER_SERVER_ID`) now apply on `config.Load` via Viper `BindEnv` (Compose env-only configs no longer silently fall back to `memory`).
+
+### Changed
+
+- Release quality: `make release-check` runs full `test` before cover; tag workflow uses `STRICT_RELEASE=1` (docker-scan) fail-closed before GoReleaser.
 
 ## [1.0.0] - 2026-07-27
 
@@ -108,7 +114,8 @@ Band 1 milestone — PostgreSQL backend works.
 
 - No production-ready engine, REST API, or CLI beyond `gfire version`. Storage foundation only.
 
-[Unreleased]: https://github.com/hrodrig/gfire/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/hrodrig/gfire/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/hrodrig/gfire/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/hrodrig/gfire/compare/v0.6.1...v1.0.0
 [0.6.1]: https://github.com/hrodrig/gfire/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/hrodrig/gfire/compare/v0.4.0...v0.6.0

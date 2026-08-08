@@ -4,7 +4,7 @@
 
 **🔥** _Language-agnostic job orchestration over HTTP — PostgreSQL, Redis, or ValKey_
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue)](./VERSION)
+[![Version](https://img.shields.io/badge/version-1.0.1-blue)](./VERSION)
 [![Go](https://img.shields.io/badge/Go-1.26.5-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Status](https://img.shields.io/badge/status-production-blue)](#)
@@ -18,7 +18,7 @@
 
 GFire is a **headless background job service**: a standalone Go binary that runs a REST API and worker pool. Applications enqueue work over HTTP — they never import GFire as a library. Workers spawn external handler processes (`cmd`) against shared storage (**PostgreSQL**, **Redis**, or **ValKey**).
 
-> **v1.0.0 — production-ready.** Run `gfire server`, enqueue via **curl**, inspect with CLI. See [ROADMAP.md](ROADMAP.md) for post-v1 work (pipelines, GFireUI).
+> **v1.0.1 — production-ready.** Run `gfire server`, enqueue via **curl**, inspect with CLI. Nested `GFIRE_*` env works for Compose. See [ROADMAP.md](ROADMAP.md) for post-v1 work (pipelines, GFireUI).
 
 ## Table of contents
 
@@ -197,7 +197,7 @@ curl -sS http://127.0.0.1:8080/v1/servers         # active servers in cluster
 
 ## Current status
 
-v1.0.0 — production-ready. Server, REST API, CLI, Prometheus metrics, all three storage backends.
+v1.0.1 — production-ready. Server, REST API, CLI, Prometheus metrics, all three storage backends. Nested `GFIRE_*` env BindEnv.
 
 | Component | Status |
 |-----------|--------|
@@ -262,6 +262,13 @@ make server   # build + run daemon
 ```
 
 Binary output: `bin/gfire`.
+
+### Release quality (fail-closed)
+
+- Tag `v*` only from `main` after merging `develop`.
+- Local bar before tagging: `make release-check` (fmt, vet, **test**, cover ≥80% memory, gocyclo, govulncheck, grype, `goreleaser check`).
+- Tag workflow re-runs gates with `STRICT_RELEASE=1` (adds docker-scan) **before** GoReleaser publishes binaries/GHCR.
+- Red gate = no image, no GitHub Release assets.
 
 [↑ Back to top](#readme-top)
 

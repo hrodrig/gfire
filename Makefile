@@ -57,7 +57,7 @@ help:
 	@echo "  make grype          Grype directory scan (Docker fallback if missing)"
 	@echo "  make security       govulncheck + gocyclo + grype"
 	@echo "  make ci             fmt-check + lint + gocyclo + test"
-	@echo "  make release-check  VERSION semver + goreleaser + fmt-check + lint + cover + security"
+	@echo "  make release-check  semver + goreleaser check + fmt + lint + test + cover + security"
 	@echo "  make snapshot       Goreleaser snapshot to dist/ (no tag)"
 	@echo "  make docker-build   Build container image"
 	@echo "  make docker-scan    docker-build + Grype image scan"
@@ -146,7 +146,8 @@ security: govulncheck gocyclo grype
 ci: fmt-check lint gocyclo test
 	@echo "OK: ci (fmt-check, vet, gocyclo, test)"
 
-# Semver + goreleaser + fmt-check + vet + cover + security (+ optional docker-scan when STRICT_RELEASE=1).
+# Semver + goreleaser + fmt-check + vet + test + cover + security (+ docker-scan when STRICT_RELEASE=1).
+# Fail-closed: red gates must abort before any tag publish (see .github/workflows/release.yml).
 release-check:
 	@test -f VERSION || { echo "VERSION file is required"; exit 1; }
 	@echo "Release version: $(VERSION) (tag: $(TAG))"
@@ -158,6 +159,7 @@ release-check:
 	goreleaser check
 	@$(MAKE) fmt-check
 	@$(MAKE) lint
+	@$(MAKE) test
 	@$(MAKE) cover
 	@$(MAKE) security
 	@if [ "$(STRICT_RELEASE)" = "1" ]; then \
