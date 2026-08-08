@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Nested `GFIRE_*` environment variables (e.g. `GFIRE_STORAGE_BACKEND`, `GFIRE_STORAGE_POSTGRES_DSN`, `GFIRE_SERVER_SERVER_ID`) now apply on `config.Load` via Viper `BindEnv` (Compose env-only configs no longer silently fall back to `memory`).
+
 ## [1.0.0] - 2026-07-27
 
 First **production-ready** release. All Band 0–7 delivered.

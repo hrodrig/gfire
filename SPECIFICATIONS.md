@@ -976,6 +976,19 @@ gfire server --backend postgres --pg-dsn "postgres://..."
 gfire server --backend redis --redis-addr "10.0.0.5:6379"
 ```
 
+Environment variables use prefix `GFIRE_` and nested keys with `_` (Viper). Nested fields are **BindEnv**-registered so Compose-style env (no YAML) works. Examples:
+
+| Env | Config key |
+|-----|------------|
+| `GFIRE_STORAGE_BACKEND` | `storage.backend` |
+| `GFIRE_STORAGE_POSTGRES_DSN` | `storage.postgres.dsn` |
+| `GFIRE_SERVER_SERVER_ID` | `server.server_id` |
+| `GFIRE_SERVER_WORKERS` | `server.workers` |
+| `GFIRE_AUTH_ENABLED` / `GFIRE_AUTH_TOKEN` | `auth.enabled` / `auth.token` |
+| `GFIRE_STORAGE_REDIS_ADDR` | `storage.redis.addr` |
+
+Precedence: defaults ← YAML file ← env ← CLI flags (CLI wins where the server command maps flags).
+
 
 
 ### Worker goroutine loop
