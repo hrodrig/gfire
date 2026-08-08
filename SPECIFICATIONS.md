@@ -308,7 +308,7 @@ POST   /v1/recurring/{id}/trigger    → fire immediately, outside schedule
 
 ```
 GET    /openapi.json                 → OpenAPI 3 document for all /v1/* routes   # B5-013
-GET    /healthz                      → { status: "ok" }
+GET    /healthz                      → { status: "ok", version, commit }  # version/commit from ldflags; may be empty in local builds
 GET    /readyz                       → { status: "ok" } (storage reachable)
 GET    /metrics                      → Prometheus text (when metrics.enabled)
 ```
