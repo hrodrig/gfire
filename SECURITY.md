@@ -2,11 +2,9 @@
 
 ## Scope
 
-This policy covers the GFire service binary, its configuration handling, storage backends (in-memory, PostgreSQL, Redis/ValKey), the HTTP API (when shipped), and published container images.
+This policy covers the GFire service binary, its configuration handling, storage backends (in-memory, PostgreSQL, Redis/ValKey), the HTTP API, and published container images.
 
 GFire is a **headless job orchestrator**. Job handlers are external processes configured by operators; treat handler args, logs, and storage contents as potentially sensitive.
-
-**Status:** GFire is early pre-release (**v0.3.0**, Band 2). Do not run in production. Security expectations still apply to the code that exists.
 
 ## Supported versions
 
@@ -18,7 +16,23 @@ We support the **latest release** tagged on `main` and meaningful security fixes
 | Older releases | No — upgrade to latest |
 | Unreleased / `develop` | Best-effort; report issues early |
 
-Until the first tagged release, report issues against `develop`.
+## Threat model notes (operators)
+
+### Handler `cmd` execution (CTR-006)
+
+Handlers are external binaries (or argv) declared in job definitions / config. GFire **spawns** those processes with job args. Anyone who can write `gfire.yaml`, enqueue arbitrary `cmd` jobs, or compromise the API Bearer token can achieve **remote code execution** as the GFire process user. Mitigations:
+
+- Run GFire under a least-privilege OS user / container (distroless nonroot image).
+- Protect config files and the API token; prefer network policy so only trusted clients reach the API.
+- Do not expose the engine API directly to untrusted browsers (use [gfireui-backend](https://github.com/hrodrig/gfireui-backend) or another BFF for human auth).
+
+### Unauthenticated observability endpoints
+
+When `auth.enabled` is true, Bearer auth applies to `/v1/*`. The following remain **open by design** for probes and scrapers: `/healthz`, `/readyz`, `/metrics`, `/openapi.json`. `/metrics` may expose business counters (enqueue/success/fail volumes). Restrict scrape access at the network layer if that is sensitive.
+
+### Cancel locality
+
+`POST /v1/jobs/{id}/cancel` only cancels jobs **processing on the node that receives the request**. Do not assume cluster-wide cancel until PV-011.
 
 ## Reporting a vulnerability
 

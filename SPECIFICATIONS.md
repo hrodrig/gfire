@@ -313,17 +313,19 @@ GET    /readyz                       → { status: "ok" } (storage reachable)
 GET    /metrics                      → Prometheus text (when metrics.enabled)
 ```
 
-**Recurring create request:**
+**Recurring create request** (JSON field names match the API: `job_name`, `cron_expr`):
 
 ```json
 {
   "id": "nightly-cleanup",
-  "cron": "0 2 * * *",
+  "cron_expr": "0 0 2 * * *",
   "queue": "default",
-  "name": "cleanup_expired",
+  "job_name": "cleanup_expired",
   "args": { "days": 30 }
 }
 ```
+
+`cron_expr` uses **six fields** (seconds first), matching `robfig/cron` with `WithSeconds`. Descriptors such as `@every 1h` are accepted. Invalid expressions return **400**.
 
 
 
@@ -538,7 +540,7 @@ type JobWithStates struct {
 
 ## 5. Storage Interface
 
-The `Storage` interface is **the** abstraction. Every backend implements it. **31 methods** (including `Close`; `ScheduleRetry` and `SetJobResult` added in Band 3).
+The `Storage` interface is **the** abstraction. Every backend implements it. **34 methods** (including `Close`; Band 3 added `ScheduleRetry`/`SetJobResult`; Band 5 added `DeleteJob`/`EnqueueIdempotent`; Band 11 / CTR-007 added `UpdateRecurringLastRun`).
 
 ```go
 type Storage interface {
@@ -610,6 +612,7 @@ type Storage interface {
     UpsertRecurring(ctx context.Context, entry *RecurringJobEntry) error
     RemoveRecurring(ctx context.Context, id string) error
     GetRecurringJobs(ctx context.Context) ([]*RecurringJobEntry, error)
+    UpdateRecurringLastRun(ctx context.Context, id string, lastRun, nextRun time.Time) error
 
     // ──────────────────────────────────────────────
     // Continuations
@@ -645,6 +648,12 @@ type Storage interface {
 
     // SetJobResult stores handler stdout (JSON) on the job before Succeeded (cap 64KB).
     SetJobResult(ctx context.Context, jobID string, result []byte) error
+
+    // DeleteJob soft-deletes a job (Band 5).
+    DeleteJob(ctx context.Context, jobID string) error
+
+    // EnqueueIdempotent dedupes by job.IdempotencyKey (Band 5).
+    EnqueueIdempotent(ctx context.Context, queue string, job *Job) (id string, created bool, err error)
 
     Close() error
 }
@@ -915,14 +924,16 @@ server:
     - "critical"
     - "default"
     - "low"
-  queue_limits:                  # optional per-queue concurrency caps (B3-010)
-    critical: 2                  # max concurrent Processing jobs on this queue; 0 = no cap
-    default: 0
-    low: 0
   dequeue_timeout: "5s"          # max block per fetch
   shutdown_timeout: "30s"        # max wait for in-flight jobs on stop
   max_body_size: 10485760        # 10MB max request body (413 if exceeded)
   default_timeout: 30s           # per-job timeout when job.Timeout = 0
+
+# Root-level (not under server:) — B3-010 / CTR-003
+queue_limits:                    # optional per-queue concurrency caps
+  critical: 2                    # max concurrent Processing jobs on this queue; 0 = no cap
+  default: 0
+  low: 0
 
 heartbeat:
   interval: "5s"
@@ -997,7 +1008,7 @@ Workers respect `queue_limits` before dequeue: if a queue is at its cap, skip it
 
 On success, if handler stdout is valid JSON and ≤64KB, persist it as `Job.Result` (B3-011).
 
-Cancel: when cancel is requested for a `Processing` job, the engine cancels the job context, sends **SIGTERM** to the handler subprocess, then transitions to `Cancelled` (B3-009).
+Cancel: when cancel is requested for a `Processing` job **on the same node that is running it**, the engine cancels the job context, sends **SIGTERM** to the handler subprocess, then transitions to `Cancelled` (B3-009). Cancel is **local to the executing node** (in-memory cancel map). In a multi-pod deploy, cancelling a job that runs on another node returns **409** / `job not processing on this engine`. Cross-node cancel is deferred (ROADMAP PV-011).
 
 ```go
 func (w *worker) run(ctx context.Context) {
@@ -1060,23 +1071,25 @@ Recurring jobs are managed via the HTTP API, not Go code.
 
 ```
 POST   /v1/recurring
-       {"id": "nightly-cleanup", "cron": "0 2 * * *", "queue": "default", "name": "cleanup_expired", "args": {...}}
+       {"id": "nightly-cleanup", "cron_expr": "0 0 2 * * *", "queue": "default", "job_name": "cleanup_expired", "args": {...}}
+       → 400 if cron_expr does not parse (six fields / seconds, or @descriptors)
 
 DELETE /v1/recurring/{id}
 
-POST   /v1/recurring/{id}/trigger    → fire immediately, outside schedule
+POST   /v1/recurring/{id}/trigger    → fire immediately, outside schedule (also updates last_run/next_run)
 
-GET    /v1/recurring                 → list all recurring definitions
+GET    /v1/recurring                 → list all recurring definitions (includes last_run/next_run when set)
 ```
 
 
 
 ### Internal implementation
 
-- Uses `robfig/cron/v3` internally
+- Uses `robfig/cron/v3` with **`WithSeconds()`** (six-field expressions; first field = seconds)
 - On server start: load all recurring entries from storage → register with cron
-- Cron tick: acquire distributed lock `gfire:lock:recurring:<id>` — only the winning node fires
-- On fire: enqueue a new `Job`, update `last_run` and `next_run` in storage
+- Cron tick: acquire distributed lock `lock:recurring:<id>` — only the winning node fires
+- On fire: enqueue a new `Job`, then `UpdateRecurringLastRun` (CTR-007)
+- `POST /v1/recurring` validates `cron_expr` before persist (CTR-001)
 - Entries survive server restarts (persisted in storage)
 
 
@@ -1421,7 +1434,7 @@ POST /v1/jobs/{id}/cancel
      {"reason": "operator abort — bad deploy"}
 ```
 
-Only valid when current state is `Processing`. Engine sends SIGTERM to handler subprocess; terminal state is `Cancelled` (not `Failed`, no retry).
+Only valid when current state is `Processing` **and the job is running on the node that receives the cancel request**. Engine sends SIGTERM to handler subprocess; terminal state is `Cancelled` (not `Failed`, no retry). If the job is processing on another peer, the API returns **409** (`job not processing on this engine`). Documented locality: CTR-005; distributed cancel: PV-011.
 
 CLI equivalent: `gfire job cancel <id>` (Band 6, B6-010).
 
@@ -1510,23 +1523,22 @@ GFire v1 ships **no embedded UI**. Monitoring and ops:
 
 
 
-### Post-v1: GFireUI
+### Ops console (out-of-tree)
 
-Separate React project. Talks only to the public REST API. Not part of the `gfire` binary.
+[GFireUI](https://github.com/hrodrig/gfireui) (SvelteKit SPA) + [gfireui-backend](https://github.com/hrodrig/gfireui-backend) (BFF) talk to the public REST API. Not part of the `gfire` binary. Engine remains headless.
 
-### Prometheus metrics (v1)
+### Prometheus metrics (v1 — as shipped)
+
+`GET /metrics` emits Prometheus text **hand-built** in `internal/api/metrics.go` (no `prometheus/client_golang` in v1.0.x). Actual series:
 
 ```
-gfire_jobs_enqueued_total{queue}
-gfire_jobs_succeeded_total{queue}
-gfire_jobs_failed_total{queue}
-gfire_jobs_dead_total{queue}              # poison / DLQ — B6-011
-gfire_jobs_duration_seconds{queue,name}   # histogram
-gfire_workers_active{server_id}
-gfire_queue_depth{queue}
-gfire_servers_active
-gfire_servers_stale
+gfire_jobs_<name>_total                 # from storage counters (e.g. succeeded, failed, dead, enqueued) — no {queue} label today
+gfire_queue_depth{queue}                # gauge per queue
+gfire_servers{status="active"|"total"}  # gauges
+gfire_workers_active                    # in-flight jobs on this node (no server_id label)
 ```
+
+Histogram `gfire_jobs_duration_seconds` and labeled counters via `prometheus/client_golang` are deferred (**PV-010**).
 
 
 
@@ -1577,8 +1589,8 @@ gfire/
 ├── docker-compose.yml
 └── README.md
 
-# Post-v1 (separate repo): GFireUI — React dashboard against REST API
-# Post-v1 optional: pkg/client/ — Go SDK for enqueue (only if needed)
+# Out-of-tree: gfireui (SvelteKit) + gfireui-backend (BFF) against REST API
+# Optional later: pkg/client/ — Go SDK for enqueue (only if needed)
 ```
 
 > **Convention:** no `.go` domain packages at repo root. `cmd/` is the only public entry point.
@@ -1612,7 +1624,7 @@ gfire/
 | `go-redis/v9`                               | Redis/ValKey driver (v1 — rueidis deferred)                 |
 | `jackc/pgx/v5`                              | PostgreSQL driver                                           |
 | `golang-migrate/migrate` or `pressly/goose` | PG schema migrations                                        |
-| `prometheus/client_golang`                  | Prometheus `/metrics`                                       |
+| *(none — hand-rolled text)*                 | Prometheus `/metrics` (PV-010 may add client_golang)          |
 | stdlib `net/http`                           | HTTP router (Go 1.22+)                                      |
 
 
@@ -1645,7 +1657,7 @@ Post-v1 optional: `go.opentelemetry.io/otel` for traces.
 15. **Cancel in-flight** — **DECIDED: `POST /v1/jobs/{id}/cancel` + engine SIGTERM (B3-009, B5-011).** Terminal state `Cancelled`; no automatic retry.
 16. **Dead / DLQ state** — **DECIDED: `Dead` after `retry_max` exhausted (B3-012).** Distinct from retryable `Failed`; filter via `--state dead` and `gfire_jobs_dead_total`.
 17. **Job result capture** — **DECIDED: handler stdout JSON → `Job.Result`, cap 64KB (B3-011).** Continuations may inject parent result into child args (Band 4).
-18. **Per-queue concurrency cap** — **DECIDED: `server.queue_limits` map (B3-010).** e.g. `critical: 2` limits parallel SAP extracts; `0` = no cap beyond `server.workers`.
+18. **Per-queue concurrency cap** — **DECIDED: root-level `queue_limits` map (B3-010 / CTR-003).** e.g. `critical: 2` limits parallel SAP extracts; `0` = no cap beyond `server.workers`. Not nested under `server:`.
 19. **OpenAPI** — **DECIDED: `GET /openapi.json` OpenAPI 3 spec (B5-013).** Curl-first API; generic clients without hand-written SDKs.
 
 

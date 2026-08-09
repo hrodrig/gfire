@@ -499,6 +499,20 @@ func (s *Storage) GetRecurringJobs(ctx context.Context) ([]*domain.RecurringJobE
 	return result, nil
 }
 
+func (s *Storage) UpdateRecurringLastRun(ctx context.Context, id string, lastRun, nextRun time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entry, ok := s.recurring[id]
+	if !ok {
+		return serrors.ErrNotFound
+	}
+	lr, nr := lastRun, nextRun
+	entry.LastRun = &lr
+	entry.NextRun = &nr
+	entry.UpdatedAt = time.Now()
+	return nil
+}
+
 // ──────────────────────────────────────────────────────
 // Continuations
 // ──────────────────────────────────────────────────────

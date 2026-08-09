@@ -11,6 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - ROADMAP: Band 10 — native packages (`.deb`/`.rpm`/systemd via GoReleaser nfpms; `PKG-001`–`004`); unblocks gfire-selfhosted Band 4.
 
+## [1.0.3] - 2026-08-09
+
+### Fixed
+
+- **CTR-001:** `POST /v1/recurring` validates `cron_expr` (six-field / `WithSeconds` or `@descriptors`) and returns **400** on parse errors (no more silent engine warn-only failures).
+- **CTR-007:** Recurring fires (and manual trigger) persist `last_run` / `next_run` via `UpdateRecurringLastRun` on all storage backends.
+
+### Changed
+
+- **CTR-002 / CTR-003 / CTR-005:** SPEC aligned with shipped metrics, Storage method count (34), root-level `queue_limits`, and local-only cancel semantics.
+- **CTR-004:** `docs/compare.md` refreshed for v1.0.x (GFireUI out-of-tree, honest cancel/DAG status).
+- **CTR-006:** `SECURITY.md` documents handler `cmd` RCE threat model and open `/metrics` with auth.
+- **CTR-008 / ROADMAP:** Band 11–12 inserted; post-v1 order ABDC (11 → 12 → 8 → 9 → 10); PV-001 marked shipped; PV-010/011 deferred.
+
 ## [1.0.2] - 2026-08-08
 
 ### Added
@@ -124,7 +138,9 @@ Band 1 milestone — PostgreSQL backend works.
 
 - No production-ready engine, REST API, or CLI beyond `gfire version`. Storage foundation only.
 
-[Unreleased]: https://github.com/hrodrig/gfire/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/hrodrig/gfire/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/hrodrig/gfire/compare/v1.0.2...v1.0.3
+[1.0.2]: https://github.com/hrodrig/gfire/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/hrodrig/gfire/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/hrodrig/gfire/compare/v0.6.1...v1.0.0
 [0.6.1]: https://github.com/hrodrig/gfire/compare/v0.6.0...v0.6.1

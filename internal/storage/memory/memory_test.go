@@ -6,6 +6,7 @@ import (
 	"time"
 
 	domain "github.com/hrodrig/gfire/internal/job"
+	serrors "github.com/hrodrig/gfire/internal/storage/errors"
 	"github.com/hrodrig/gfire/internal/storage/memory"
 )
 
@@ -640,7 +641,7 @@ func TestStorage_ScheduleRetrySetResult(t *testing.T) {
 		ID:       "daily-echo",
 		JobName:  "echo",
 		Queue:    "default",
-		CronExpr: "0 * * * *",
+		CronExpr: "0 0 * * * *",
 		Enabled:  true,
 	}
 	if err := s.UpsertRecurring(ctx, entry); err != nil {
@@ -652,6 +653,18 @@ func TestStorage_ScheduleRetrySetResult(t *testing.T) {
 	}
 	if len(recurring) != 1 || recurring[0].ID != "daily-echo" {
 		t.Fatalf("unexpected recurring jobs: %+v", recurring)
+	}
+	last := time.Now().UTC()
+	next := last.Add(time.Hour)
+	if err := s.UpdateRecurringLastRun(ctx, "daily-echo", last, next); err != nil {
+		t.Fatalf("UpdateRecurringLastRun: %v", err)
+	}
+	recurring, _ = s.GetRecurringJobs(ctx)
+	if recurring[0].LastRun == nil || recurring[0].NextRun == nil {
+		t.Fatal("expected last_run and next_run set")
+	}
+	if err := s.UpdateRecurringLastRun(ctx, "missing", last, next); err != serrors.ErrNotFound {
+		t.Fatalf("UpdateRecurringLastRun missing: got %v", err)
 	}
 	if err := s.RemoveRecurring(ctx, "daily-echo"); err != nil {
 		t.Fatalf("RemoveRecurring: %v", err)

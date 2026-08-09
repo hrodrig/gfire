@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -40,6 +41,10 @@ func (s *Server) handleCreateRecurring(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "id, job_name, and cron_expr are required")
 		return
 	}
+	if _, err := domain.ParseRecurringCron(req.CronExpr); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid cron_expr: %v", err))
+		return
+	}
 	queue := req.Queue
 	if queue == "" {
 		queue = "default"
@@ -54,6 +59,7 @@ func (s *Server) handleCreateRecurring(w http.ResponseWriter, r *http.Request) {
 		args = append([]byte(nil), req.Args...)
 	}
 
+	now := time.Now().UTC()
 	entry := &domain.RecurringJobEntry{
 		ID:       req.ID,
 		JobName:  req.JobName,
@@ -62,8 +68,11 @@ func (s *Server) handleCreateRecurring(w http.ResponseWriter, r *http.Request) {
 		CronExpr: req.CronExpr,
 		Enabled:  enabled,
 	}
-	entry.CreatedAt = time.Now()
-	entry.UpdatedAt = entry.CreatedAt
+	entry.CreatedAt = now
+	entry.UpdatedAt = now
+	if next, err := domain.NextRecurringRun(req.CronExpr, now); err == nil {
+		entry.NextRun = &next
+	}
 
 	if err := s.store.UpsertRecurring(r.Context(), entry); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -135,6 +144,12 @@ func (s *Server) handleTriggerRecurring(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	now := time.Now().UTC()
+	nextRun := now
+	if next, err := domain.NextRecurringRun(entry.CronExpr, now); err == nil {
+		nextRun = next
+	}
+	_ = s.store.UpdateRecurringLastRun(r.Context(), id, now, nextRun)
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"recurring_id": id,
 		"job_id":       jobID,

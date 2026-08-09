@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	domain "github.com/hrodrig/gfire/internal/job"
+	serrors "github.com/hrodrig/gfire/internal/storage/errors"
 )
 
 func (s *Storage) AddScheduled(ctx context.Context, enqueueAt time.Time, job *domain.Job) (string, error) {
@@ -219,6 +220,22 @@ func (s *Storage) GetRecurringJobs(ctx context.Context) ([]*domain.RecurringJobE
 		result = append(result, &e)
 	}
 	return result, rows.Err()
+}
+
+func (s *Storage) UpdateRecurringLastRun(ctx context.Context, id string, lastRun, nextRun time.Time) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE gfire.recurring_jobs
+		SET last_run = $2, next_run = $3, updated_at = $4
+		WHERE id = $1`,
+		id, lastRun.UTC(), nextRun.UTC(), time.Now().UTC(),
+	)
+	if err != nil {
+		return fmt.Errorf("update recurring last_run: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return serrors.ErrNotFound
+	}
+	return nil
 }
 
 func (s *Storage) AddContinuation(ctx context.Context, parentID string, entry *domain.ContinuationEntry) error {
