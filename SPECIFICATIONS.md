@@ -684,6 +684,8 @@ Both serve the same logical operations. Redis/ValKey use list/sorted-set/set pri
 
 Redis and ValKey are **API-compatible** (as of 2025). They share the same driver (`go-redis/v9` in v1) and implementation module. The only difference is the connection address.
 
+**Schema migrations: none.** The backend creates keyed structures on first use. Operators must **not** run `gfire migrate` / `make migrate-up` for Redis or ValKey — those commands apply only to PostgreSQL (`storage.backend = postgres`).
+
 ### Data model
 
 
@@ -743,7 +745,7 @@ Band 2 ships `internal/storage/redis/` on **`github.com/redis/go-redis/v9`**. Va
 
 ## 7. PostgreSQL Storage
 
-
+PostgreSQL is the only backend that requires a versioned SQL schema. Apply migrations before `gfire server` (`make migrate-up` or `gfire migrate`). The engine does **not** auto-migrate on startup. Redis/ValKey have no equivalent step (see §6).
 
 ### Schema
 

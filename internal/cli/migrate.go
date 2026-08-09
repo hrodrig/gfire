@@ -17,6 +17,7 @@ func newMigrateCmd() *cobra.Command {
 		Short: "Run PostgreSQL schema migrations",
 		Long: `Runs golang-migrate up migrations against the PostgreSQL DSN from config.
 
+PostgreSQL only — Redis and ValKey need no schema migrations (keys are created at runtime).
 Requires the 'migrate' CLI (github.com/golang-migrate/migrate) installed.
 Migration files are read from ` + MigrationsPath + `.`,
 		RunE: func(_ *cobra.Command, _ []string) error {
@@ -25,7 +26,7 @@ Migration files are read from ` + MigrationsPath + `.`,
 				return err
 			}
 			if c.Storage.Backend != "postgres" {
-				return fmt.Errorf("migrations require storage.backend = postgres (current: %s)", c.Storage.Backend)
+				return fmt.Errorf("migrations require storage.backend = postgres (current: %s); Redis/ValKey need no schema migrate", c.Storage.Backend)
 			}
 			dsn := c.Storage.Postgres.DSN
 			if dsn == "" {

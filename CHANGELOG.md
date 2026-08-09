@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Docs/SPEC: Redis/ValKey need **no** schema migrations (`gfire migrate` / `make migrate-up` are PostgreSQL-only).
 - ROADMAP: Band 10 — native packages (`.deb`/`.rpm`/systemd via GoReleaser nfpms; `PKG-001`–`004`); unblocks gfire-selfhosted Band 4.
 
 ## [1.0.3] - 2026-08-09
