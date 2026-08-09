@@ -1,8 +1,9 @@
-# GFire Roadmap — v1.0.0
+# GFire Roadmap — v1.0.x
 
 **Start:** July 2026
-**Target:** September 2026
+**Target:** September 2026+
 **Cadence:** Weekly bands. Each band produces a working, testable increment.
+**Post-v1 order (ABDC, Aug 2026 audits):** Band 11 Contract → Band 12 Quality/CI → Band 8 Pipelines → Band 9 Adoption → Band 10 Packages.
 
 ---
 
@@ -11,7 +12,7 @@
 - **GFire is a headless service** — a standalone binary that runs REST API + worker pool.
 - **CLI** for server management + quick inspection (`gfire job list --state failed`).
 - **Prometheus metrics** for production monitoring (Grafana dashboards).
-- **Full web dashboard** comes after v1 as a separate React project (GFireUI) that talks to the same REST API.
+- **Ops console is out-of-tree:** [gfireui](https://github.com/hrodrig/gfireui) (SvelteKit SPA) + [gfireui-backend](https://github.com/hrodrig/gfireui-backend) (Go BFF: JWT/RBAC/audit) talk to the same REST API. Engine stays headless by design.
 - Each band is **shippable independently**. Band 3 alone gives you a working job engine.
 - **Product wedge (v1):** PostgreSQL (or Redis) + HTTP/curl + continuations — not Faktory/BullMQ throughput. Jobs are ~1KB instruction cards; heavy data stays in handlers (S3, DB).
 
@@ -125,7 +126,7 @@ GFire uses **shared-state coordination**, not leader election. All nodes are pee
 | Deliverable                                                                 | Status |
 | --------------------------------------------------------------------------- | ------ |
 | `internal/job/` — Job, JobState, ServerInfo, Lock, JobTicket, continuations | ✅      |
-| `internal/storage/storage.go` — Full interface (31 methods; 29 at v0.1.0)   | ✅      |
+| `internal/storage/storage.go` — Full interface (34 methods as of v1.0.3; 29 at v0.1.0) | ✅      |
 | `internal/storage/errors/` — Sentinel errors                                | ✅      |
 | `internal/storage/memory/` — Thread-safe in-memory backend                  | ✅      |
 | `internal/storage/memory/memory_test.go` — 13 tests, all passing            | ✅      |
@@ -214,10 +215,10 @@ GFire uses **shared-state coordination**, not leader election. All nodes are pee
 | Retry with exponential backoff + jitter → `ScheduleRetry`                        | ✅      |
 | Integration test: in-memory engine, 100 jobs                                     | ✅      |
 | **B3-009** In-flight cancel — cancel context → `Cancelled`                       | ✅      |
-| **B3-010** Per-queue concurrency cap — `server.queue_limits`                     | ✅      |
+| **B3-010** Per-queue concurrency cap — root `queue_limits` (not under `server:`) | ✅      |
 | **B3-011** Job result capture — stdout → `SetJobResult` (cap 64KB)               | ✅      |
 | **B3-012** Dead (DLQ) state — after `retry_max` exhausted                        | ✅      |
-| `ScheduleRetry` + `SetJobResult` on Storage interface (31 methods total)         | ✅      |
+| `ScheduleRetry` + `SetJobResult` on Storage interface (grew further in Bands 5/11) | ✅      |
 | SIGINT/SIGTERM signal wiring in `cmd/gfire server`                               | ✅ Band 6 |
 
 
@@ -382,11 +383,56 @@ GET    /healthz, /readyz, /metrics, /openapi.json
 
 ---
 
+## Band 11 — Contract hardening (v1.0.3)
 
+> From audits 2026-08-09 (Kimi / Hermes-MiniMax / Hermes-DeepSeek): close SPEC↔code drift, document real limits, ship small ops fixes. **Execute before Band 12 and Band 8.**
+
+
+| ID | Deliverable | Est. | Status |
+| -- | ----------- | ---- | ------ |
+| CTR-001 | Cron: SPEC/README/E2E use 6-field expr; `POST /v1/recurring` validates parse → 400 | 0.5 day | ✅ |
+| CTR-002 | SPEC §16 metrics = actual `/metrics` exporters (no promised histogram / client_golang) | 0.5 day | ✅ |
+| CTR-003 | SPEC method count → 34; `queue_limits` at YAML root (not under `server:`) | 0.25 day | ✅ |
+| CTR-004 | Refresh `docs/compare.md` to v1.0.x (drop early-WIP cells) | 0.5 day | ✅ |
+| CTR-005 | SPEC §14: cancel is local to the executing node (cross-node → document 409) | 0.25 day | ✅ |
+| CTR-006 | SECURITY.md: `cmd` handler threat (writable config = RCE); `/metrics` open with auth | 0.25 day | ✅ |
+| CTR-007 | `UpdateRecurringLastRun` on Storage + wire RecurringManager | 1 day | ✅ |
+| CTR-008 | ROADMAP Philosophy + PV-001: GFireUI shipped out-of-tree (SvelteKit + BFF) | — | ✅ |
+
+**Out of scope here:** Prom histogram impl (PV-010), cross-node cancel (PV-011), cover/CI gates (Band 12).
+
+**Depends on:** v1.0.2.
+
+**🔑 v1.0.3** — "SPEC matches code; recurring last_run tracked; cancel locality documented." ✅
+
+**Shipped v1.0.3** — CTR-001–008: cron validation, metrics/SPEC honesty, compare refresh, cancel locality docs, SECURITY threat notes, `UpdateRecurringLastRun`, GFireUI narrative fix.
+
+---
+
+## Band 12 — Quality & CI (post-contract)
+
+> Audits flag PG/Redis unit coverage ~0% and integration/E2E outside CI. Close regression risk **before** Band 8 feature work.
+
+
+| ID | Deliverable | Est. | Status |
+| -- | ----------- | ---- | ------ |
+| QUAL-001 | CI services: postgres + redis; run storage package tests against real backends | 1–2 days | ⬜ |
+| QUAL-002 | Separate/nightly workflow: `make e2e` (or slim subset) | 1 day | ⬜ |
+| QUAL-003 | Expand `make cover` gates: engine + api floors (~50–60% start); keep memory ≥80% | 0.5 day | ⬜ |
+| QUAL-004 | Pin `gocyclo` / `govulncheck` tool versions (no `@latest` drift) | 0.25 day | ⬜ |
+| QUAL-005 | Direct tests for critical API paths if cover gap remains | 1 day | ⬜ |
+
+**Done when:** green CI proves PG+Redis; storage regressions caught before tag.
+
+**Depends on:** Band 11 (contract closed).
+
+---
 
 ## Band 8 — Pipelines (DAG orchestration) (post-v1)
 
 > First-class DAG runs: parallel steps, `all_of` joins, fan-out, completion barriers. Headless YAML + HTTP — the wedge vs Airflow/Dagster is language-agnostic `cmd` handlers, not operator catalogs or embedded UI.
+>
+> **Schedule:** start only after **Band 12** Done (ABDC: product after contract + quality).
 
 
 | Deliverable | Est. effort |
@@ -402,17 +448,17 @@ GET    /healthz, /readyz, /metrics, /openapi.json
 
 **Design case #1:** multi-source extract → pivot table → fan-out to N destinations; run `Succeeded` only when all branches complete.
 
-**Depends on:** v1.0.0 (engine, API, continuations, storage backends).
+**Depends on:** Band 12 Done (+ v1.0.x engine, API, continuations, storage backends).
 
 **🔑 v1.1.0** — "Headless DAG orchestration with join and fan-out barriers."
 
 ---
 
-
-
 ## Band 9 — Adoption (evidence first; post-v1)
 
-> Rescued from product review (Aug 2026 / GLM), then tightened: **docs without a runnable proof are marketing noise.** Adoption risk is not technical — teams stick to in-process libraries unless they can *verify* the “why switch.” Framing: **multi-language same queue** and/or **strict enqueue/worker separation**. Do not block Band 8.
+> Rescued from product review (Aug 2026 / GLM), then tightened: **docs without a runnable proof are marketing noise.** Adoption risk is not technical — teams stick to in-process libraries unless they can *verify* the “why switch.” Framing: **multi-language same queue** and/or **strict enqueue/worker separation**.
+>
+> **Schedule (ABDC):** start **after Band 8** unless an explicit exception. Do not treat Adoption as a substitute for Pipelines; do not start ADOPT before Pipelines under the default plan.
 >
 > **Rule:** each ADOPT ships a harness the outsider can run. README/guides only wrap that harness. Done = stranger reproduces the claim without asking us.
 
@@ -424,25 +470,42 @@ GET    /healthz, /readyz, /metrics, /openapi.json
 | ADOPT-004 | Path off Sidekiq / Celery is concrete | Guided migrate doc with **commands the reader runs** (map concepts → enqueue/handler → verify via CLI); not only compare matrix | `docs/migrate-from-*.md` | 1–1.5 days | ⬜ |
 
 
-**Honest gaps today:** v1 E2E proves jobs work for operators. It does **not** prove multi-lang, sidecar, or fair benches. `docs/compare.md` is narrative, not a trial.
+**Honest gaps today:** v1 E2E proves jobs work for operators. It does **not** prove multi-lang, sidecar, or fair benches. `docs/compare.md` is narrative, not a trial (CTR-004 refreshes facts; harnesses still Band 9).
 
 **Priority if time-boxed:** ADOPT-001 → ADOPT-002 → ADOPT-003 → ADOPT-004 (guides last — after something exists to migrate *to* with proof).
 
-**Depends on:** v1.0.0 (API, CLI, Docker, compare docs).
+**Depends on:** Band 8 Done (default ABDC schedule); v1.0.x API/CLI/Docker.
 
 ---
 
+## Band 10 — Native packages (deb / rpm / systemd) (post-v1)
 
+> Family split (same as **gghstats**): **this repo** builds packages via GoReleaser `nfpms` and ships a systemd unit under `contrib/`. **[gfire-selfhosted](https://github.com/hrodrig/gfire-selfhosted)** only documents install paths (`GSH-040`–`042`) once artifacts exist on Releases — it does **not** build packages.
+>
+> **Schedule:** after Band 9.
+
+| ID | Item | Notes | Status |
+| -- | ---- | ----- | ------ |
+| PKG-001 | GoReleaser `nfpms` → `.deb` + `.rpm` on tag `v*` | linux amd64/arm64; mirror gghstats layout | ⬜ |
+| PKG-002 | `contrib/systemd/gfire.service` (+ env example) | `server` under distroless-friendly paths; `EnvironmentFile=` | ⬜ |
+| PKG-003 | Package maintainer scripts (postinst/prerm as needed) | enable/disable unit; no surprise daemon start without docs | ⬜ |
+| PKG-004 | Homebrew formula (optional follow-up) | Unblocks selfhosted `GSH-040` | ⬜ |
+
+**Done when:** a release publishes `.deb`/`.rpm` (and unit inside package); `gfire-selfhosted` Band 4 can cite real asset names.
+
+**Depends on:** Band 9 Done; v1.0.x release pipeline (GoReleaser + GHCR already shipping archives).
+
+---
 
 ## Post-v1 enhancements (deferred — do not block v1.0.0)
 
-> From product review (July 2026). Track here; implement after v1 API is stable unless demand forces earlier.
+> From product review (July 2026) + audits 2026-08-09. Track here; implement after v1 API is stable unless demand forces earlier.
 
 
 | ID | Feature | Why | Target |
 | --- | --- | --- | --- |
-| PV-001 | **GFireUI** (React dashboard) | Ops visibility, monetization | Post-v1 separate repo |
-| PV-002 | **OpenTelemetry traces** | Multi-service prod debugging | v1.1+ / Band 7+ |
+| PV-001 | **GFireUI** (ops console) | Ops visibility — **shipped** out-of-tree as GFireUI (SvelteKit) + gfireui-backend (BFF), v0.1.x | ✅ separate repos |
+| PV-002 | **OpenTelemetry traces** | Multi-service prod debugging | v1.1+ |
 | PV-003 | **Continuations v2 — fan-out** (N child jobs) | Parallel ETL branches | v1.1+ (Band 8 pipelines overlap) |
 | PV-004 | **Payload offload** (S3/etc.) for args >10MB | Large inline payloads | On customer demand |
 | PV-005 | **Rate limit per queue** | Multi-tenant fairness | Enterprise / plugin |
@@ -450,8 +513,10 @@ GET    /healthz, /readyz, /metrics, /openapi.json
 | PV-007 | **Webhooks on terminal state** | Push vs poll for ops | Post-v1 / enterprise |
 | PV-008 | **Unique jobs** (dedupe by name+args hash) | Sidekiq-style | On demand |
 | PV-009 | **Long-lived handler pool** (JSON-lines stdin) | Sub-50ms job latency | v1.x optional |
+| PV-010 | **Prom histogram + client_golang** | Full SPEC-era metrics (`gfire_jobs_duration_seconds`) | After Band 11 (SPEC honesty first) |
+| PV-011 | **Cross-node job cancel** | Cancel via storage signal (not local map only) | After Band 8 unless demand |
 
-**Explicit non-goals for v1:** compete with BullMQ/Kafka throughput; embedded UI; inline GB payloads; Raft/leader election.
+**Explicit non-goals for v1:** compete with BullMQ/Kafka throughput; embedded UI in the engine binary; inline GB payloads; Raft/leader election.
 
 ---
 
@@ -468,12 +533,17 @@ Week 5-6│ Band 4 ─ Scheduler + recurring + cont.    ✅ v1.0.0
 Week 6-7│ Band 5 ─ REST API                         ✅ v1.0.0
 Week 7  │ Band 6 ─ CLI + monitoring                 ✅ v1.0.0
 Week 8  │ Band 7 ─ Polish, Docker, release          ✅ v1.0.0
+Next    │ Band 11 ─ Contract hardening              ✅ v1.0.3
+Next    │ Band 12 ─ Quality & CI                    ⬜
 Post    │ Band 8 ─ Pipelines (DAG)                  ⬜ v1.1.0
-Post    │ Band 9 ─ Adoption (evidence harnesses)    ⬜
+Post    │ Band 9 ─ Adoption (evidence harnesses)    ⬜ (after Band 8)
+Post    │ Band 10 ─ Native packages (deb/rpm/systemd) ⬜ (after Band 9)
 ```
 
 **Total:** ~8 weeks for one developer working consistently (v1.0.0).
-**Post-v1:** Band 8 adds headless DAG orchestration (~2 weeks). Band 9 is adoption *evidence* (runnable multi-lang, k8s apply, benches, migrate-with-commands) — can run in parallel with or before Band 8; docs alone do not close the band.
-**Deliverable (v1):** Single binary (`gfire`), REST API, CLI, Prometheus metrics, three storage backends, n+1 scaling without consensus. No embedded UI (GFireUI separate project).
+**Post-v1 (ABDC):** Band 11 contract → Band 12 CI/quality → Band 8 Pipelines → Band 9 Adoption evidence → Band 10 native packages. Docs alone do not close Band 9.
+**Deliverable (v1):** Single binary (`gfire`), REST API, CLI, Prometheus metrics, three storage backends, n+1 scaling without consensus. Engine headless; GFireUI is a separate project.
+**Deliverable (v1.0.3):** SPEC↔code alignment, recurring `last_run`, documented cancel locality.
 **Deliverable (v1.1):** Declarative pipelines with join, fan-out, and run-level completion barriers.
 **Deliverable (Band 9):** Stranger can reproduce each adoption claim without asking us.
+**Deliverable (Band 10):** Releases attach `.deb`/`.rpm` with systemd unit; operators can `apt`/`dnf` + `systemctl enable --now gfire`.

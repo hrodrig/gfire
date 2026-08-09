@@ -95,6 +95,17 @@ func TestAPI_RecurringCRUD(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 
+	// Reject classic 5-field cron (engine requires seconds field).
+	bad := `{"id":"bad","job_name":"cleanup","cron_expr":"0 2 * * *"}`
+	badResp, err := http.Post(ts.URL+"/v1/recurring", "application/json", bytes.NewBufferString(bad))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer badResp.Body.Close()
+	if badResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid cron: expected 400, got %d", badResp.StatusCode)
+	}
+
 	// Create a recurring job.
 	body := `{"id":"nightly","job_name":"cleanup","cron_expr":"@every 1h","args":{"days":30}}`
 	resp, err := http.Post(ts.URL+"/v1/recurring", "application/json", bytes.NewBufferString(body))

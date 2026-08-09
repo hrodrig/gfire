@@ -311,7 +311,7 @@ func openapiSpec() map[string]any {
 						"job_name":  map[string]any{"type": "string"},
 						"args":      map[string]any{"type": "object"},
 						"queue":     map[string]any{"type": "string", "default": "default"},
-						"cron_expr": map[string]any{"type": "string", "description": "Cron expression (seconds granularity)"},
+						"cron_expr": map[string]any{"type": "string", "description": "Six-field cron (seconds first) or @descriptor; invalid → 400"},
 						"enabled":   map[string]any{"type": "boolean", "default": true},
 					},
 				},

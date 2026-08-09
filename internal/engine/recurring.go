@@ -38,6 +38,7 @@ type domainStorage interface {
 	GetRecurringJobs(ctx context.Context) ([]*domain.RecurringJobEntry, error)
 	Enqueue(ctx context.Context, queue string, job *domain.Job) (id string, err error)
 	AcquireLock(ctx context.Context, resource string, ttl time.Duration) (domain.Lock, error)
+	UpdateRecurringLastRun(ctx context.Context, id string, lastRun, nextRun time.Time) error
 }
 
 func newRecurringManager(store domainStorage, serverID string, logger *slog.Logger) *recurringManager {
@@ -181,9 +182,15 @@ func (m *recurringManager) fireFunc(entry *domain.RecurringJobEntry) func() {
 			return
 		}
 
-		// Bump last-run tracking on the definition (best-effort).
-		// TODO: Add UpdateRecurringLastRun to Storage interface for full tracking.
-		_ = jobID
+		now := time.Now().UTC()
+		nextRun, nextErr := domain.NextRecurringRun(entry.CronExpr, now)
+		if nextErr != nil {
+			m.logger.Warn("recurring next_run parse", "id", entry.ID, "err", nextErr)
+			nextRun = now
+		}
+		if err := m.store.UpdateRecurringLastRun(ctx, entry.ID, now, nextRun); err != nil {
+			m.logger.Warn("recurring last_run update", "id", entry.ID, "err", err)
+		}
 		m.logger.Info("recurring fired", "id", entry.ID, "job", entry.JobName, "job_id", jobID)
 	}
 }

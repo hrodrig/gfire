@@ -108,6 +108,10 @@ type Storage interface {
 	// GetRecurringJobs returns all recurring job definitions.
 	GetRecurringJobs(ctx context.Context) ([]*domain.RecurringJobEntry, error)
 
+	// UpdateRecurringLastRun sets last_run / next_run after a recurring fire (CTR-007).
+	// Returns ErrNotFound if the definition does not exist.
+	UpdateRecurringLastRun(ctx context.Context, id string, lastRun, nextRun time.Time) error
+
 	// ──────────────────────────────────────────────────────────────
 	// Continuations
 	// ──────────────────────────────────────────────────────────────

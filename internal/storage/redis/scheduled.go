@@ -9,6 +9,7 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 
 	domain "github.com/hrodrig/gfire/internal/job"
+	serrors "github.com/hrodrig/gfire/internal/storage/errors"
 )
 
 // promoteScheduledScript atomically moves due scheduled jobs to enqueued.
@@ -164,6 +165,32 @@ func (s *Storage) GetRecurringJobs(ctx context.Context) ([]*domain.RecurringJobE
 		result = append(result, e)
 	}
 	return result, nil
+}
+
+func (s *Storage) UpdateRecurringLastRun(ctx context.Context, id string, lastRun, nextRun time.Time) error {
+	raw, err := s.client.HGet(ctx, recurringKey, id).Result()
+	if err == goredis.Nil {
+		return serrors.ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("update recurring last_run get: %w", err)
+	}
+	entry, err := unmarshalRecurring(raw)
+	if err != nil {
+		return err
+	}
+	lr, nr := lastRun.UTC(), nextRun.UTC()
+	entry.LastRun = &lr
+	entry.NextRun = &nr
+	entry.UpdatedAt = time.Now().UTC()
+	encoded, err := marshalRecurring(entry)
+	if err != nil {
+		return err
+	}
+	if err := s.client.HSet(ctx, recurringKey, id, encoded).Err(); err != nil {
+		return fmt.Errorf("update recurring last_run: %w", err)
+	}
+	return nil
 }
 
 func (s *Storage) AddContinuation(ctx context.Context, parentID string, entry *domain.ContinuationEntry) error {
