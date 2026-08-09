@@ -274,7 +274,7 @@ Binary output: `bin/gfire`.
 
 ## PostgreSQL setup
 
-Set `storage.backend: postgres` in `gfire.yaml`, then:
+Set `storage.backend: postgres` in `gfire.yaml`, then apply schema migrations (**required** for Postgres; not used for Redis/ValKey):
 
 ```sh
 make db-up         # start postgres + redis + valkey via docker compose
@@ -290,13 +290,15 @@ Default DSN: `postgres://gfire:gfire@localhost:5432/gfire?sslmode=disable`
 
 ## Redis / ValKey setup
 
-Set `storage.backend: redis` in `gfire.yaml`, then:
+Set `storage.backend: redis` (or `valkey`) in `gfire.yaml`, then:
 
 ```sh
 make db-up         # starts redis on :6379, valkey on :6380
 go test ./internal/storage/redis/ -count=1
 ./bin/gfire server --config gfire.yaml
 ```
+
+**No schema migrations.** Redis/ValKey create keys at runtime (`gfire:job:…`, queues, sorted sets). `make migrate-up` / `gfire migrate` apply **only** to PostgreSQL — skip them for these backends.
 
 ValKey is a drop-in Redis-compatible fork. Same config block, same `addr:port` field:
 
